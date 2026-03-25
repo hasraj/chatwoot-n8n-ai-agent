@@ -1,0 +1,25 @@
+{
+  "faqs": [
+    {
+      "question": "shipping",
+      "answer": "We offer free shipping on orders over $50. Standard delivery takes 3-5 business days."
+    },
+    {
+      "question": "returns",
+      "answer": "You can return items within 30 days of purchase. Items must be unused and in original packaging."
+    },
+    {
+      "question": "payment",
+      "answer": "We accept Visa, Mastercard, PayPal, and bank transfers."
+    },
+    {
+      "question": "tracking",
+      "answer": "You can track your order using the tracking number provided in your shipping confirmation email."
+    },
+    {
+      "question": "contact",
+      "answer": "You can contact our support team at support@famivita.com or through this chat."
+    }
+  ]
+}</content>
+<parameter name="filePath">F:/github/chatwoot n8n ai agent/faq.json

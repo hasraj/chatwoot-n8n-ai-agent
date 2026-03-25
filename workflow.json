@@ -1,0 +1,250 @@
+{
+  "name": "Chatwoot AI Agent Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-webhook",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "webhook-node"
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a customer support assistant. Use the provided tools to retrieve information and generate helpful responses."
+            },
+            {
+              "role": "user",
+              "content": "Customer message: {{$node[\"Webhook\"].json[\"body\"][\"message\"]}}\n\nContext: {{$node[\"AI Agent\"].json}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "OpenAI",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 3,
+      "position": [600, 300],
+      "id": "openai-node"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-chatwoot-instance.com/api/v1/accounts/YOUR_ACCOUNT_ID/conversations/YOUR_CONVERSATION_ID/messages",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $node[\"OpenAI\"].json[\"choices\"][0][\"message\"][\"content\"] }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Send to Chatwoot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [800, 300],
+      "id": "chatwoot-send-node"
+    },
+    {
+      "parameters": {
+        "agent": "openAiFunctionsAgent",
+        "maxIterations": 5,
+        "tools": {
+          "tools": [
+            {
+              "tool": "productLookup",
+              "name": "Product Lookup",
+              "description": "Retrieve product information from WooCommerce",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "product_id": {
+                    "type": "string",
+                    "description": "The product ID or SKU"
+                  }
+                },
+                "required": ["product_id"]
+              }
+            },
+            {
+              "tool": "orderLookup",
+              "name": "Order Status Lookup",
+              "description": "Retrieve order status from WooCommerce",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "order_id": {
+                    "type": "string",
+                    "description": "The order ID"
+                  }
+                },
+                "required": ["order_id"]
+              }
+            },
+            {
+              "tool": "faqLookup",
+              "name": "FAQ Lookup",
+              "description": "Retrieve FAQ answers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The FAQ query"
+                  }
+                },
+                "required": ["query"]
+              }
+            },
+            {
+              "tool": "createOrder",
+              "name": "Create Order",
+              "description": "Create a new order in WooCommerce",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "customer_id": {
+                    "type": "string",
+                    "description": "Customer ID"
+                  },
+                  "products": {
+                    "type": "array",
+                    "description": "List of products"
+                  }
+                },
+                "required": ["customer_id", "products"]
+              }
+            }
+          ]
+        },
+        "prompt": "You are a customer support AI. Use tools to gather information and provide accurate responses."
+      },
+      "name": "AI Agent",
+      "type": "n8n-nodes-base.agent",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "id": "ai-agent-node"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/products/{{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"product_id\"]}}",
+        "authentication": "basicAuth",
+        "sendBody": false,
+        "options": {}
+      },
+      "name": "WooCommerce Product Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 400],
+      "id": "woocommerce-product-node"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/orders/{{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"order_id\"]}}",
+        "authentication": "basicAuth",
+        "sendBody": false,
+        "options": {}
+      },
+      "name": "WooCommerce Order Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 500],
+      "id": "woocommerce-order-node"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/orders",
+        "authentication": "basicAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"customer_id\"]}}"
+            },
+            {
+              "name": "line_items",
+              "value": "={{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"products\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "WooCommerce Create Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [400, 600],
+      "id": "woocommerce-create-order-node"
+    },
+    {
+      "parameters": {
+        "code": "const faqData = {\n  'shipping': 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.',\n  'returns': 'You can return items within 30 days of purchase. Items must be unused and in original packaging.',\n  'payment': 'We accept Visa, Mastercard, PayPal, and bank transfers.'\n};\n\nconst query = $node['AI Agent'].json.toolCalls[0].args.query.toLowerCase();\n\nlet answer = 'I\\'m sorry, I couldn\\'t find an answer to that question.';\n\nif (query.includes('ship')) {\n  answer = faqData.shipping;\n} else if (query.includes('return')) {\n  answer = faqData.returns;\n} else if (query.includes('payment') || query.includes('pay')) {\n  answer = faqData.payment;\n}\n\nreturn { answer };"
+      },
+      "name": "FAQ Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 700],
+      "id": "faq-node"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Send to Chatwoot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}</content>
+<parameter name="filePath">F:/github/chatwoot n8n ai agent/workflow.json
