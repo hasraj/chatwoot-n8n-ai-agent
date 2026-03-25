@@ -6,7 +6,7 @@
     },
     {
       "question": "returns",
-      "answer": "You can return items within 30 days of purchase. Items must be unused and in original packaging."
+      "answer": "You can return items within 30 days of purchase if they are unused and in their original packaging."
     },
     {
       "question": "payment",
@@ -14,12 +14,11 @@
     },
     {
       "question": "tracking",
-      "answer": "You can track your order using the tracking number provided in your shipping confirmation email."
+      "answer": "You can track your order using the tracking number from your shipping confirmation message."
     },
     {
       "question": "contact",
       "answer": "You can contact our support team at support@famivita.com or through this chat."
     }
   ]
-}</content>
-<parameter name="filePath">F:/github/chatwoot n8n ai agent/faq.json
+}

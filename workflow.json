@@ -1,206 +1,304 @@
 {
-  "name": "Chatwoot AI Agent Workflow",
+  "name": "Chatwoot Support Agent - Phase 1",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "chatwoot-webhook",
+        "path": "chatwoot-ai-agent",
         "responseMode": "onReceived",
         "options": {}
       },
-      "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [240, 300],
-      "id": "webhook-node"
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "id": "c903e52d-8689-4fb6-aed6-1910e34b0db0",
+      "name": "Webhook"
     },
     {
       "parameters": {
-        "model": "gpt-3.5-turbo",
-        "messages": {
-          "messages": [
-            {
-              "role": "system",
-              "content": "You are a customer support assistant. Use the provided tools to retrieve information and generate helpful responses."
-            },
-            {
-              "role": "user",
-              "content": "Customer message: {{$node[\"Webhook\"].json[\"body\"][\"message\"]}}\\n\\nContext: {{$node[\"AI Agent\"].json}}"
-            }
-          ]
-        },
-        "options": {}
+        "jsCode": "const item = $input.first().json;\nconst body = item.body ?? item;\n\nconst parseCsv = (value) => String(value || '')\n  .split(',')\n  .map((entry) => entry.trim())\n  .filter(Boolean);\n\nconst normalizeBaseUrl = (value, fallback) => {\n  const finalValue = String(value || fallback || '').trim();\n  return finalValue.replace(/\\/$/, '');\n};\n\nconst content = String(body.content ?? '').trim();\nconst senderType = body.sender?.type ?? body.sender_type ?? body.conversation?.meta?.sender?.type ?? '';\nconst messageType = body.message_type;\nconst isIncoming = messageType === 'incoming' || messageType === 0 || messageType === '0';\nconst isPrivate = Boolean(body.private);\nconst shouldInspect = body.event === 'message_created' && isIncoming && senderType === 'contact' && !isPrivate && content.length > 0;\nconst orderMatch = content.match(/(?:order\\s*#?\\s*|#)(\\d{4,})\\b/i) || content.match(/\\b(\\d{5,})\\b/);\n\nreturn {\n  route: shouldInspect ? 'process' : 'ignore',\n  event: body.event ?? '',\n  messageId: body.id ?? null,\n  conversationId: body.conversation?.id ?? body.conversation_id ?? null,\n  accountId: body.account?.id ?? body.account_id ?? null,\n  inboxId: body.inbox?.id ?? body.inbox_id ?? body.conversation?.inbox_id ?? null,\n  content,\n  senderType,\n  messageType,\n  detectedOrderId: orderMatch ? orderMatch[1] : '',\n  config: {\n    chatwootBaseUrl: normalizeBaseUrl($env.CHATWOOT_BASE_URL, 'https://chatwoot.example.com'),\n    wooBaseUrl: normalizeBaseUrl($env.WOOCOMMERCE_BASE_URL, 'https://store.example.com'),\n    openAiModel: String($env.OPENAI_MODEL || 'gpt-4.1-mini').trim(),\n    processingMode: String($env.CHATWOOT_PROCESSING_MODE || 'test_only').trim().toLowerCase(),\n    allowedPhoneNumbers: parseCsv($env.CHATWOOT_ALLOWED_TEST_PHONES),\n    allowedLabels: parseCsv($env.CHATWOOT_ALLOWED_TEST_LABELS || 'ai-test').map((label) => label.toLowerCase()),\n    allowedInboxIds: parseCsv($env.CHATWOOT_ALLOWED_INBOX_IDS),\n    maxConversationMessages: Math.max(Number($env.CHATWOOT_MAX_HISTORY_MESSAGES || 8), 1),\n    supportEmail: String($env.SUPPORT_FALLBACK_EMAIL || 'support@famivita.com').trim(),\n    orderCreationEnabled: String($env.ENABLE_WOO_ORDER_CREATION || 'false').trim().toLowerCase() === 'true'\n  }\n};"
       },
-      "name": "OpenAI",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 3,
-      "position": [600, 300],
-      "id": "openai-node"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://your-chatwoot-instance.com/api/v1/accounts/YOUR_ACCOUNT_ID/conversations/YOUR_CONVERSATION_ID/messages",
-        "sendBody": true,
-        "bodyContentType": "json",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "content",
-              "value": "={{ $node[\"OpenAI\"].json[\"choices\"][0][\"message\"][\"content\"] }}"
-            },
-            {
-              "name": "message_type",
-              "value": "outgoing"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Send to Chatwoot",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [800, 300],
-      "id": "chatwoot-send-node"
-    },
-    {
-      "parameters": {
-        "agent": "openAiFunctionsAgent",
-        "maxIterations": 5,
-        "tools": [
-          {
-            "name": "productLookup",
-            "description": "Retrieve product information from WooCommerce",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "product_id": {
-                  "type": "string",
-                  "description": "The product ID or SKU"
-                }
-              },
-              "required": ["product_id"]
-            }
-          },
-          {
-            "name": "orderLookup",
-            "description": "Retrieve order status from WooCommerce",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "order_id": {
-                  "type": "string",
-                  "description": "The order ID"
-                }
-              },
-              "required": ["order_id"]
-            }
-          },
-          {
-            "name": "faqLookup",
-            "description": "Retrieve FAQ answers",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "query": {
-                  "type": "string",
-                  "description": "The FAQ query"
-                }
-              },
-              "required": ["query"]
-            }
-          },
-          {
-            "name": "createOrder",
-            "description": "Create a new order in WooCommerce",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "customer_id": {
-                  "type": "string",
-                  "description": "Customer ID"
-                },
-                "products": {
-                  "type": "array",
-                  "description": "List of products"
-                }
-              },
-              "required": ["customer_id", "products"]
-            }
-          }
-        ],
-        "prompt": "You are a customer support AI. Use tools to gather information and provide accurate responses."
-      },
-      "name": "AI Agent",
-      "type": "n8n-nodes-base.agent",
-      "typeVersion": 1,
-      "position": [400, 300],
-      "id": "ai-agent-node"
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/products/{{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"product_id\"]}}",
-        "authentication": "basicAuth",
-        "sendBody": false,
-        "options": {}
-      },
-      "name": "WooCommerce Product Lookup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [400, 400],
-      "id": "woocommerce-product-node"
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/orders/{{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"order_id\"]}}",
-        "authentication": "basicAuth",
-        "sendBody": false,
-        "options": {}
-      },
-      "name": "WooCommerce Order Lookup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [400, 500],
-      "id": "woocommerce-order-node"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://your-woocommerce-site.com/wp-json/wc/v3/orders",
-        "authentication": "basicAuth",
-        "sendBody": true,
-        "bodyContentType": "json",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "customer_id",
-              "value": "={{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"customer_id\"]}}"
-            },
-            {
-              "name": "line_items",
-              "value": "={{$node[\"AI Agent\"].json[\"toolCalls\"][0][\"args\"][\"products\"]}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "WooCommerce Create Order",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [400, 600],
-      "id": "woocommerce-create-order-node"
-    },
-    {
-      "parameters": {
-        "code": "const faqData = {\\n  'shipping': 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.',\\n  'returns': 'You can return items within 30 days of purchase. Items must be unused and in original packaging.',\\n  'payment': 'We accept Visa, Mastercard, PayPal, and bank transfers.'\\n};\\n\\nconst query = $node['AI Agent'].json.toolCalls[0].args.query.toLowerCase();\\n\\nlet answer = 'I am sorry, I could not find an answer to that question.';\\n\\nif (query.includes('ship')) {\\n  answer = faqData.shipping;\\n} else if (query.includes('return')) {\\n  answer = faqData.returns;\\n} else if (query.includes('payment') || query.includes('pay')) {\\n  answer = faqData.payment;\\n}\\n\\nreturn { answer };"
-      },
-      "name": "FAQ Lookup",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 700],
-      "id": "faq-node"
+      "position": [
+        480,
+        300
+      ],
+      "id": "7bd44772-7297-45db-bdc1-acf940e0b77e",
+      "name": "Normalize Incoming Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aad80f87-162f-48c3-b03d-2a5448d6754b",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "process",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ],
+      "id": "91082d44-2d64-4313-8ef8-6b48472544d0",
+      "name": "Should Inspect Event?"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Normalize Incoming Event').first().json.config.chatwootBaseUrl }}/api/v1/accounts/{{ $('Normalize Incoming Event').first().json.accountId }}/conversations/{{ $('Normalize Incoming Event').first().json.conversationId }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_API_TOKEN }}"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        300
+      ],
+      "id": "3082fffa-92e3-4d49-bd9f-26e3086bca73",
+      "name": "Get Conversation Messages"
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $('Normalize Incoming Event').first().json;\nconst messageList = $input.first().json;\n\nconst normalizePhone = (value) => String(value || '').replace(/[^+\\d]/g, '');\nconst stripHtml = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst contact = messageList.meta?.contact?.payload?.[0] ?? {};\nconst labels = Array.isArray(messageList.meta?.labels) ? messageList.meta.labels : [];\nconst phoneNumber = normalizePhone(contact.phone_number ?? '');\nconst allowedPhones = event.config.allowedPhoneNumbers.map(normalizePhone);\nconst allowedLabels = event.config.allowedLabels.map((label) => label.toLowerCase());\nconst allowedInboxIds = event.config.allowedInboxIds.map((id) => String(id));\nconst inboxId = String(event.inboxId ?? '');\n\nconst phoneAllowed = allowedPhones.length > 0 && allowedPhones.includes(phoneNumber);\nconst labelAllowed = labels.some((label) => allowedLabels.includes(String(label).toLowerCase()));\nconst inboxAllowed = allowedInboxIds.length > 0 && allowedInboxIds.includes(inboxId);\nconst liveMode = event.config.processingMode === 'live';\n\nconst route = liveMode || phoneAllowed || labelAllowed || inboxAllowed ? 'run' : 'skip';\nconst gateReason = liveMode\n  ? 'live_mode'\n  : phoneAllowed\n    ? 'phone_allowlist'\n    : labelAllowed\n      ? 'label_allowlist'\n      : inboxAllowed\n        ? 'inbox_allowlist'\n        : 'blocked_in_test_mode';\n\nconst knowledgeBase = [\n  {\n    topic: 'shipping',\n    keywords: ['ship', 'shipping', 'delivery'],\n    answer: 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.'\n  },\n  {\n    topic: 'returns',\n    keywords: ['return', 'refund', 'exchange'],\n    answer: 'You can return items within 30 days of purchase if they are unused and in their original packaging.'\n  },\n  {\n    topic: 'payment',\n    keywords: ['payment', 'pay', 'card', 'bank transfer'],\n    answer: 'We accept Visa, Mastercard, PayPal, and bank transfers.'\n  },\n  {\n    topic: 'tracking',\n    keywords: ['track', 'tracking', 'where is my order', 'where order'],\n    answer: 'You can track your order using the tracking number from your shipping confirmation message.'\n  },\n  {\n    topic: 'contact',\n    keywords: ['support', 'human', 'agent', 'contact'],\n    answer: `You can contact our support team at ${event.config.supportEmail}.`\n  }\n];\n\nconst lowerMessage = event.content.toLowerCase();\nconst faqMatches = knowledgeBase\n  .filter((entry) => entry.keywords.some((keyword) => lowerMessage.includes(keyword)))\n  .map(({ topic, answer }) => ({ topic, answer }))\n  .slice(0, 3);\n\nconst stopWords = new Set([\n  'the', 'and', 'for', 'with', 'this', 'that', 'have', 'from', 'what', 'your', 'about', 'please', 'need', 'want',\n  'know', 'tell', 'price', 'stock', 'order', 'where', 'when', 'does', 'will', 'show', 'much', 'how', 'can',\n  'you', 'me', 'our', 'get', 'buy', 'make', 'create', 'status', 'hello', 'hi'\n]);\n\nconst productSearchTerm = event.content\n  .toLowerCase()\n  .replace(/order\\s*#?\\s*\\d+/gi, ' ')\n  .replace(/[^a-z0-9\\s-]/g, ' ')\n  .split(/\\s+/)\n  .filter((word) => word && word.length > 2 && !stopWords.has(word))\n  .slice(0, 6)\n  .join(' ');\n\nconst recentMessages = (Array.isArray(messageList.payload) ? messageList.payload : [])\n  .filter((message) => !message.private && String(message.content || '').trim())\n  .slice(-event.config.maxConversationMessages)\n  .map((message) => ({\n    role: message.sender_type === 'contact' || message.message_type === 0 ? 'customer' : 'agent',\n    content: stripHtml(message.content),\n    created_at: message.created_at\n  }));\n\nconst createOrderRequested = /(create|place|buy|purchase).{0,20}order|order.{0,20}(create|place|buy|purchase)/i.test(event.content);\n\nreturn {\n  route,\n  gateReason,\n  accountId: event.accountId,\n  conversationId: event.conversationId,\n  inboxId: event.inboxId,\n  content: event.content,\n  orderLookupId: event.detectedOrderId,\n  productSearchTerm,\n  createOrderRequested,\n  contactName: contact.name ?? '',\n  contactPhone: phoneNumber,\n  labels,\n  faqMatches,\n  recentMessages,\n  config: event.config\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        300
+      ],
+      "id": "e9b1db4f-c29e-43f1-b290-aa9f8390c413",
+      "name": "Gate Test Contact"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ca1db5cd-a76c-408b-8bae-38bf4c22554f",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "run",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        300
+      ],
+      "id": "a6f130ad-6e46-4879-82ef-4d2bfe3f4af9",
+      "name": "Should Run Bot?"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Gate Test Contact').first().json.config.wooBaseUrl }}/wp-json/wc/v3/orders/{{ $('Gate Test Contact').first().json.orderLookupId || '0' }}?consumer_key={{ $env.WOOCOMMERCE_CONSUMER_KEY }}&consumer_secret={{ $env.WOOCOMMERCE_CONSUMER_SECRET }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        220
+      ],
+      "id": "37d31cc7-532b-4c1b-aa03-f7d2bb26e72e",
+      "name": "Woo Order Lookup",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Gate Test Contact').first().json.config.wooBaseUrl }}/wp-json/wc/v3/products?search={{ encodeURIComponent($('Gate Test Contact').first().json.productSearchTerm || 'zzzz-no-match-zzzz') }}&per_page=3&consumer_key={{ $env.WOOCOMMERCE_CONSUMER_KEY }}&consumer_secret={{ $env.WOOCOMMERCE_CONSUMER_SECRET }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        220
+      ],
+      "id": "a6bf99b8-4341-490d-a5d9-cd6f4526b1b9",
+      "name": "Woo Product Search",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const supportContext = $('Gate Test Contact').first().json;\nconst orderResponse = $('Woo Order Lookup').first().json ?? {};\nconst productResponse = $('Woo Product Search').first().json ?? {};\n\nconst stripHtml = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst orderBody = orderResponse.body ?? {};\nconst orderSummary = orderResponse.statusCode === 200 && orderBody.id\n  ? {\n      id: orderBody.id,\n      status: orderBody.status,\n      currency: orderBody.currency,\n      total: orderBody.total,\n      date_created: orderBody.date_created,\n      billing_email: orderBody.billing?.email,\n      billing_phone: orderBody.billing?.phone,\n      line_items: Array.isArray(orderBody.line_items)\n        ? orderBody.line_items.map((item) => ({\n            product_id: item.product_id,\n            name: item.name,\n            quantity: item.quantity,\n            total: item.total\n          }))\n        : []\n    }\n  : null;\n\nconst productBody = Array.isArray(productResponse.body) ? productResponse.body : [];\nconst productSummary = productBody.slice(0, 3).map((product) => ({\n  id: product.id,\n  name: product.name,\n  sku: product.sku,\n  price: product.price,\n  stock_status: product.stock_status,\n  permalink: product.permalink,\n  short_description: stripHtml(product.short_description || product.description || '')\n}));\n\nconst retrievedContext = {\n  customer: {\n    name: supportContext.contactName,\n    phone_number: supportContext.contactPhone\n  },\n  routing: {\n    processing_mode: supportContext.config.processingMode,\n    gate_reason: supportContext.gateReason,\n    labels: supportContext.labels\n  },\n  order_lookup: orderSummary,\n  product_lookup: productSummary,\n  faq_matches: supportContext.faqMatches,\n  recent_messages: supportContext.recentMessages,\n  order_creation: {\n    requested: supportContext.createOrderRequested,\n    enabled: supportContext.config.orderCreationEnabled,\n    instruction: supportContext.config.orderCreationEnabled\n      ? 'Order creation is enabled only when all required fields are collected and explicitly confirmed.'\n      : 'Order creation is disabled in this phase. If the customer wants to place an order, collect details and route to a human teammate.'\n  }\n};\n\nconst systemMessage = [\n  'You are the Famivita AI customer support agent working inside Chatwoot.',\n  'Reply in the same language as the customer whenever possible.',\n  'Use only the retrieved context for factual claims about orders, products, shipping, returns, payment, or policies.',\n  'If the retrieved context is missing or insufficient, say that clearly and ask one short clarifying question or suggest a human handoff.',\n  'Never invent order status, delivery dates, product details, stock, prices, promotions, or medical advice.',\n  'Keep replies concise, warm, and suitable for WhatsApp.',\n  `If you need to escalate, direct the customer to ${supportContext.config.supportEmail}.`\n].join('\\n');\n\nconst userMessage = [\n  `Latest customer message: ${supportContext.content}`,\n  `Customer name: ${supportContext.contactName || 'Unknown customer'}`,\n  `Retrieved context JSON: ${JSON.stringify(retrievedContext)}`\n].join('\\n\\n');\n\nreturn {\n  accountId: supportContext.accountId,\n  conversationId: supportContext.conversationId,\n  chatwootBaseUrl: supportContext.config.chatwootBaseUrl,\n  supportEmail: supportContext.config.supportEmail,\n  openAiRequest: {\n    model: supportContext.config.openAiModel,\n    temperature: 0.2,\n    messages: [\n      {\n        role: 'system',\n        content: systemMessage\n      },\n      {\n        role: 'user',\n        content: userMessage\n      }\n    ]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        220
+      ],
+      "id": "68734496-c847-488a-bf0c-402db0cd16bf",
+      "name": "Build OpenAI Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.openAiRequest }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2300,
+        220
+      ],
+      "id": "d8e5587d-52ab-4c46-b658-7dbfbc63198e",
+      "name": "OpenAI Reply",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const requestContext = $('Build OpenAI Request').first().json;\nconst openAiResponse = $input.first().json;\n\nlet reply = '';\nif (openAiResponse.statusCode === 200) {\n  reply = String(openAiResponse.body?.choices?.[0]?.message?.content || '').trim();\n}\n\nif (!reply) {\n  reply = `Thanks for your message. I need a human teammate to review this so we can help you correctly. You can also reach us at ${requestContext.supportEmail}.`;\n}\n\nreply = reply.replace(/^['\\\"]+|['\\\"]+$/g, '').trim();\n\nreturn {\n  accountId: requestContext.accountId,\n  conversationId: requestContext.conversationId,\n  chatwootBaseUrl: requestContext.chatwootBaseUrl,\n  reply\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        220
+      ],
+      "id": "2aa28ef9-2d97-42a0-b070-e892b593224c",
+      "name": "Prepare Chatwoot Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwootBaseUrl }}/api/v1/accounts/{{ $json.accountId }}/conversations/{{ $json.conversationId }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api_access_token",
+              "value": "={{ $env.CHATWOOT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.reply, message_type: 'outgoing', private: false, content_type: 'text' } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2740,
+        220
+      ],
+      "id": "6df866bb-4560-4f2d-82ba-03f85c3b0fd8",
+      "name": "Send Reply to Chatwoot"
     }
   ],
   "connections": {
@@ -208,65 +306,119 @@
       "main": [
         [
           {
-            "node": "AI Agent",
+            "node": "Normalize Incoming Event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AI Agent": {
+    "Normalize Incoming Event": {
       "main": [
         [
           {
-            "node": "OpenAI",
+            "node": "Should Inspect Event?",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ],
-      "ai_tool_productLookup": [
-        [
-          {
-            "node": "WooCommerce Product Lookup",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ],
-      "ai_tool_orderLookup": [
-        [
-          {
-            "node": "WooCommerce Order Lookup",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ],
-      "ai_tool_faqLookup": [
-        [
-          {
-            "node": "FAQ Lookup",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ],
-      "ai_tool_createOrder": [
-        [
-          {
-            "node": "WooCommerce Create Order",
-            "type": "ai_tool",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI": {
+    "Should Inspect Event?": {
       "main": [
         [
           {
-            "node": "Send to Chatwoot",
+            "node": "Get Conversation Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get Conversation Messages": {
+      "main": [
+        [
+          {
+            "node": "Gate Test Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Test Contact": {
+      "main": [
+        [
+          {
+            "node": "Should Run Bot?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Run Bot?": {
+      "main": [
+        [
+          {
+            "node": "Woo Order Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Woo Order Lookup": {
+      "main": [
+        [
+          {
+            "node": "Woo Product Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Woo Product Search": {
+      "main": [
+        [
+          {
+            "node": "Build OpenAI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chatwoot Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chatwoot Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Reply to Chatwoot",
             "type": "main",
             "index": 0
           }
@@ -278,7 +430,8 @@
   "settings": {},
   "staticData": null,
   "meta": {},
-  "id": "chatwoot-ai-agent-workflow",
+  "pinData": {},
+  "versionId": "c01f6f4e-b50d-4c50-8f9f-4d8cd922dfaf",
+  "id": "chatwoot-support-agent-phase-1",
   "tags": []
-}</content>
-<parameter name="filePath">F:/github/chatwoot n8n ai agent/workflow.json
+}

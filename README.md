@@ -1,86 +1,165 @@
 # Chatwoot n8n AI Agent
 
-This project implements an AI-powered customer support agent that integrates Chatwoot, n8n, OpenAI, and WooCommerce. The system uses a Retrieval-Augmented Generation (RAG) approach to provide accurate, context-aware responses to customer inquiries.
+This repository now contains a safer phase-1 implementation for a Chatwoot + n8n + OpenAI + WooCommerce support agent.
 
-## Overview
+The workflow in [workflow.json](./workflow.json) is designed to:
 
-The AI agent workflow:
-1. Customer sends a message via Chatwoot (e.g., WhatsApp)
-2. Chatwoot triggers an n8n webhook with the message
-3. n8n AI Agent node evaluates the message and retrieves relevant data using tools:
-   - Product lookup via WooCommerce API
-   - Order status lookup via WooCommerce API
-   - FAQ lookup from knowledge base
-   - Order creation via WooCommerce API
-4. Retrieved data is sent to OpenAI for response generation
-5. Generated response is sent back to Chatwoot
+1. Receive `message_created` events from Chatwoot.
+2. Ignore anything that is not a new incoming customer message.
+3. Pull the conversation messages from Chatwoot so we can read the contact phone number, labels, and recent message history.
+4. Run only for approved test contacts while `CHATWOOT_PROCESSING_MODE=test_only`.
+5. Retrieve lightweight context from WooCommerce:
+   - order lookup by detected order number
+   - product lookup by a simple keyword search
+6. Add FAQ snippets and recent chat context.
+7. Ask OpenAI to draft a grounded reply.
+8. Send the reply back to Chatwoot.
 
-## Components
+## What is implemented
 
-- **Chatwoot**: Customer communication platform
-- **n8n**: Workflow automation tool
-- **OpenAI**: Language model for response generation
-- **WooCommerce**: E-commerce platform for product/order data
+This repo is now set up for a practical phase 1:
 
-## Setup Instructions
+- Chatwoot webhook intake in n8n
+- test-mode gating for your own phone number, labels, or inbox IDs
+- direct WooCommerce order lookup
+- direct WooCommerce product lookup
+- lightweight FAQ / policy retrieval
+- OpenAI response generation
+- reply posting back into Chatwoot
 
-### Prerequisites
-- Chatwoot instance
-- n8n instance
-- OpenAI API key
-- WooCommerce store with API access
-- Postgres database (for FAQ and future optimizations)
+This phase does **not** fully automate Woo order creation yet. That is intentional. Order creation from free-text customer messages is high-risk unless we first collect and confirm the required fields in a structured way.
 
-### Chatwoot Setup
-1. Create a test agent in Chatwoot
-2. Set up inbox rules to route test messages (from developer's phone) to the test agent
-3. Configure webhook to trigger n8n on new messages
-4. Deactivate existing bot during testing
+## Recommended Chatwoot Test Strategy
 
-### n8n Setup
-1. Import the workflow from `workflow.json`
-2. Configure credentials:
-   - OpenAI API key
-   - WooCommerce API credentials
-   - Chatwoot API credentials
-3. Set up webhook URL in Chatwoot
+For the live WhatsApp inbox, the safest first rollout is:
 
-### Testing
-- Use developer's phone number for test messages
-- Verify message routing through inbox rules
-- Test various scenarios: product questions, order status, FAQ, order creation
+1. Keep the current production bot disconnected while testing this workflow.
+2. Create a Chatwoot webhook that points to the n8n webhook URL.
+3. Set `CHATWOOT_PROCESSING_MODE=test_only`.
+4. Put only your own WhatsApp number in `CHATWOOT_ALLOWED_TEST_PHONES`.
+5. Optionally add an `ai-test` label rule in Chatwoot and include that label in `CHATWOOT_ALLOWED_TEST_LABELS`.
 
-### API Testing Scripts
-Run the test scripts to verify API connections:
+Why this is safer:
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+- Account webhooks let us receive conversation events without forcing the whole inbox into bot mode.
+- Chatwoot Agent Bots are inbox-level. If you attach one directly to the live inbox too early, all new conversations in that inbox can become bot-handled.
 
-# Test WooCommerce API
-python scripts/test_woocommerce_api.py
+Later, once the workflow is stable, you can switch to:
 
-# Test Chatwoot API
-python scripts/test_chatwoot_api.py
+- `CHATWOOT_PROCESSING_MODE=live`, or
+- a dedicated test inbox with a Chatwoot Agent Bot, or
+- an automation rule that only routes selected conversations into the bot flow.
+
+## Configuration
+
+Use [n8n.env.example](./n8n.env.example) as your starting point.
+
+Required variables:
+
+- `CHATWOOT_BASE_URL`
+- `CHATWOOT_API_TOKEN`
+- `CHATWOOT_ACCOUNT_ID`
+- `WOOCOMMERCE_BASE_URL`
+- `WOOCOMMERCE_CONSUMER_KEY`
+- `WOOCOMMERCE_CONSUMER_SECRET`
+- `OPENAI_API_KEY`
+
+Important behavior flags:
+
+- `CHATWOOT_PROCESSING_MODE`
+  - `test_only`: only allowed test contacts/labels/inboxes trigger replies
+  - `live`: all qualifying incoming customer messages can trigger replies
+- `CHATWOOT_ALLOWED_TEST_PHONES`
+  - comma-separated E.164 phone numbers such as `+8801XXXXXXXXX`
+- `CHATWOOT_ALLOWED_TEST_LABELS`
+  - comma-separated labels such as `ai-test`
+- `CHATWOOT_ALLOWED_INBOX_IDS`
+  - optional comma-separated Chatwoot inbox IDs
+- `ENABLE_WOO_ORDER_CREATION`
+  - currently kept `false`
+
+## Workflow Notes
+
+The workflow is intentionally simple and resilient:
+
+- It responds to the webhook immediately, then continues processing in the background.
+- It ignores outgoing messages, private notes, and non-customer events.
+- It fetches conversation messages before replying so the workflow has:
+  - contact phone number
+  - labels
+  - recent message history
+- WooCommerce requests are configured to continue even if no order is found, so the bot can still answer from FAQ or ask a clarifying question.
+- If OpenAI fails, the workflow falls back to a human-review reply.
+
+## Setup
+
+### 1. Import the workflow into n8n
+
+Import [workflow.json](./workflow.json).
+
+### 2. Set the environment variables in n8n
+
+Use the values from [n8n.env.example](./n8n.env.example) and your real credentials.
+
+### 3. Configure Chatwoot webhook
+
+Point Chatwoot to:
+
+```text
+https://YOUR-N8N/webhook/chatwoot-ai-agent
 ```
 
-Update the configuration variables in the scripts with your actual API credentials.
+### 4. Start in test mode
 
-## Files
-- `README.md`: This file
-- `workflow.json`: n8n workflow configuration
-- `faq.json`: Sample FAQ knowledge base
-- `scripts/`: Utility scripts for testing and setup
+Use:
 
-## Development Notes
-- Start with WooCommerce API direct access
-- Later optimize with Postgres sync for better performance
-- Implement RAG for accurate responses
-- Add more tools as needed (returns, promotions, etc.)
+```text
+CHATWOOT_PROCESSING_MODE=test_only
+CHATWOOT_ALLOWED_TEST_PHONES=+YOUR_NUMBER
+```
 
-## Resources
-- [Chatwoot Documentation](https://www.chatwoot.com/docs)
-- [n8n Documentation](https://docs.n8n.io/)
-- [WooCommerce REST API](https://woocommerce.github.io/woocommerce-rest-api-docs/)
-- [OpenAI API](https://platform.openai.com/docs)</content>
-<parameter name="filePath">F:/github/chatwoot n8n ai agent/README.md
+### 5. Send a WhatsApp test message from the approved number
+
+The workflow should:
+
+- receive the Chatwoot event
+- fetch the conversation history
+- confirm the phone number is allowed
+- generate a reply
+- send the reply into the same Chatwoot conversation
+
+## Future Phase 2
+
+Once the basic flow is stable, the next upgrade path should be:
+
+1. Move FAQ and product knowledge into Postgres.
+2. Add embeddings and semantic search for RAG.
+3. Sync WooCommerce orders/products into a lightweight Postgres copy.
+4. Add structured order-creation steps with explicit confirmation.
+5. Add human-handoff actions and private-note summaries for agents.
+
+## Helper Scripts
+
+Scripts in [scripts](./scripts) use environment variables instead of hard-coded secrets:
+
+- [scripts/test_chatwoot_api.py](./scripts/test_chatwoot_api.py)
+- [scripts/test_woocommerce_api.py](./scripts/test_woocommerce_api.py)
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the checks:
+
+```bash
+python scripts/test_chatwoot_api.py
+python scripts/test_woocommerce_api.py
+```
+
+## Reference Files
+
+- [workflow.json](./workflow.json): n8n workflow
+- [faq.json](./faq.json): starter FAQ data
+- [n8n.env.example](./n8n.env.example): environment variable template
