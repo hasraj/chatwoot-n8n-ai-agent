@@ -25,7 +25,7 @@
             },
             {
               "role": "user",
-              "content": "Customer message: {{$node[\"Webhook\"].json[\"body\"][\"message\"]}}\n\nContext: {{$node[\"AI Agent\"].json}}"
+              "content": "Customer message: {{$node[\"Webhook\"].json[\"body\"][\"message\"]}}\\n\\nContext: {{$node[\"AI Agent\"].json}}"
             }
           ]
         },
@@ -194,7 +194,7 @@
     },
     {
       "parameters": {
-        "code": "const faqData = {\n  'shipping': 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.',\n  'returns': 'You can return items within 30 days of purchase. Items must be unused and in original packaging.',\n  'payment': 'We accept Visa, Mastercard, PayPal, and bank transfers.'\n};\n\nconst query = $node['AI Agent'].json.toolCalls[0].args.query.toLowerCase();\n\nlet answer = 'I\\'m sorry, I couldn\\'t find an answer to that question.';\n\nif (query.includes('ship')) {\n  answer = faqData.shipping;\n} else if (query.includes('return')) {\n  answer = faqData.returns;\n} else if (query.includes('payment') || query.includes('pay')) {\n  answer = faqData.payment;\n}\n\nreturn { answer };"
+        "code": "const faqData = {\\n  'shipping': 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.',\\n  'returns': 'You can return items within 30 days of purchase. Items must be unused and in original packaging.',\\n  'payment': 'We accept Visa, Mastercard, PayPal, and bank transfers.'\\n};\\n\\nconst query = $node['AI Agent'].json.toolCalls[0].args.query.toLowerCase();\\n\\nlet answer = 'I am sorry, I could not find an answer to that question.';\\n\\nif (query.includes('ship')) {\\n  answer = faqData.shipping;\\n} else if (query.includes('return')) {\\n  answer = faqData.returns;\\n} else if (query.includes('payment') || query.includes('pay')) {\\n  answer = faqData.payment;\\n}\\n\\nreturn { answer };"
       },
       "name": "FAQ Lookup",
       "type": "n8n-nodes-base.code",
