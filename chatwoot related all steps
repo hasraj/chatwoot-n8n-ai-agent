@@ -1,0 +1,101 @@
+  curl --request POST \
+  --url https://sac.famivita.com/api/v1/accounts/1/agent_bots \
+  --header 'Content-Type: application/json' \
+  --header 'api_access_token: YOUR_CHATWOOT_API_TOKEN' \
+  --data '{
+    "name": "N8N AI Agent",
+    "description": "Chatwoot to n8n AI support bot",
+    "outgoing_url": "https://n8n.famivita.com/webhook-test/chatwoot-ai-agent",
+    "bot_type": 0,
+    "bot_config": {}
+  }'
+
+-----------
+
+  curl --request POST \
+  --url https://sac.famivita.com/api/v1/accounts/1/agent_bots \
+  --header 'Content-Type: application/json' \
+  --header 'api_access_token: YOUR_CHATWOOT_API_TOKEN' \
+  --data '{
+    "name": "N8N AI Agent",
+    "description": "Chatwoot to n8n AI support bot",
+    "outgoing_url": "https://n8n.famivita.com/webhook/chatwoot-ai-agent",
+    "bot_type": 0,
+    "bot_config": {}
+  }'
+  
+------------------
+$headers = @{
+  "api_access_token" = "YOUR_CHATWOOT_API_TOKEN"
+}
+
+Invoke-RestMethod `
+  -Method GET `
+  -Uri "https://sac.famivita.com/api/v1/accounts/1/inboxes" `
+  -Headers $headers
+  
+------------------
+
+$headers = @{
+  "api_access_token" = "YOUR_CHATWOOT_API_TOKEN"
+}
+$response = Invoke-RestMethod `
+  -Method GET `
+  -Uri "https://sac.famivita.com/api/v1/accounts/1/inboxes" `
+  -Headers $headers
+
+$response.payload | Select-Object id, name, channel_type, phone_number, provider | Format-Table -AutoSize
+  
+-------------
+
+$headers = @{
+  "Content-Type" = "application/json"
+  "api_access_token" = "YOUR_CHATWOOT_API_TOKEN"
+}
+
+$body = @{
+  agent_bot = 3
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method POST `
+  -Uri "https://sac.famivita.com/api/v1/accounts/1/inboxes/14/set_agent_bot" `
+  -Headers $headers `
+  -Body $body
+  
+-----------
+
+Invoke-RestMethod `
+  -Method GET `
+  -Uri "https://sac.famivita.com/api/v1/accounts/1/inboxes/14/agent_bot" `
+  -Headers @{ "api_access_token" = "YOUR_CHATWOOT_API_TOKEN" }
+  
+-------------
+OPENAI_API_KEY:
+YOUR_OPENAI_API_KEY
+
+---------
+
+
+https://sac.famivita.com/webhooks/whatsapp/+8801719393652
+
+YOUR_WHATSAPP_WEBHOOK_SECRET
+
+
+------------
+Create the new Chatwoot inbox
+
+Open Configurações da conta -> Caixas de Entrada.
+Click Nova caixa de entrada.
+Choose WhatsApp.
+Keep provider as Cloud do WhatsApp.
+Fill:
+Nome da Caixa de Entrada: Whatsapp: Meta Test
+Número de telefone: +15551760475
+ID do número de telefone: 1064203993436187
+ID da Conta de Negócios: 1648389286514722
+Chave da API: 
+YOUR_META_WHATSAPP_API_TOKEN
+
+https://sac.famivita.com/webhooks/whatsapp/+15551760475
+YOUR_WHATSAPP_WEBHOOK_SECRET

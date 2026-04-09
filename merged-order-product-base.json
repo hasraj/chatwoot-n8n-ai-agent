@@ -1,0 +1,502 @@
+{
+  "name": "Test: chatwoot ai with order create",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-ai-agent",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2288,
+        400
+      ],
+      "id": "0772a3ff-27ac-4973-b88a-f5916e0b655e",
+      "name": "Webhook3",
+      "webhookId": "f7e96fa9-b2b4-406a-915d-7370d94e1e13"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst body = item.body ?? item;\n\nconst normalizeBaseUrl = (value, fallback) => {\n  const finalValue = String(value || fallback || '').trim();\n  return finalValue.replace(/\\/$/, '');\n};\n\nconst content = String(body.content ?? '').trim();\nconst senderType = body.sender?.type ?? body.sender_type ?? body.conversation?.meta?.sender?.type ?? '';\nconst messageType = body.message_type;\nconst isIncoming = messageType === 'incoming' || messageType === 0 || messageType === '0';\nconst isPrivate = Boolean(body.private);\nconst shouldInspect =\n  body.event === 'message_created' &&\n  isIncoming &&\n  senderType === 'contact' &&\n  !isPrivate &&\n  content.length > 0;\n\nconst orderMatch =\n  content.match(/(?:order\\s*#?\\s*|#)(\\d{4,})\\b/i) ||\n  content.match(/\\b(\\d{5,})\\b/);\n\nreturn {\n  route: shouldInspect ? 'process' : 'ignore',\n  event: body.event ?? '',\n  isIncoming,\n  senderType,\n  isPrivate,\n  content_length: content.length,\n  messageId: body.id ?? null,\n  conversationId: body.conversation?.id ?? body.conversation_id ?? null,\n  accountId: body.account?.id ?? body.account_id ?? null,\n  inboxId: body.inbox?.id ?? body.inbox_id ?? body.conversation?.inbox_id ?? null,\n  content,\n  senderType,\n  messageType,\n  detectedOrderId: orderMatch ? orderMatch[1] : '',\n  config: {\n    chatwootBaseUrl: normalizeBaseUrl('', 'https://sac.famivita.com'),\n    wooBaseUrl: normalizeBaseUrl('', 'https://famivita.com.br'),\n    openAiModel: 'gpt-4.1-mini',\n    processingMode: 'live',\n    allowedPhoneNumbers: [],\n    allowedLabels: [],\n    allowedInboxIds: [],\n    maxConversationMessages: 8,\n    supportEmail: 'support@famivita.com',\n    orderCreationEnabled: false\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2064,
+        400
+      ],
+      "id": "478a8ff8-2231-4734-a189-a54950be07d6",
+      "name": "Normalize Incoming Event3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aad80f87-162f-48c3-b03d-2a5448d6754b",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "process",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1856,
+        400
+      ],
+      "id": "4a02f5c6-8cab-4446-aa37-5652ea4996cf",
+      "name": "Should Inspect Event?3"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Normalize Incoming Event3').first().json.config.chatwootBaseUrl }}/api/v1/accounts/{{ $('Normalize Incoming Event3').first().json.accountId }}/conversations/{{ $('Normalize Incoming Event3').first().json.conversationId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1600,
+        384
+      ],
+      "id": "3437c5e2-9d7b-4468-b88b-da0e9f67f40d",
+      "name": "Get Conversation Messages3",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SbmBMJv7nxEADt7f",
+          "name": "chatwoot token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ca1db5cd-a76c-408b-8bae-38bf4c22554f",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "run",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1088,
+        384
+      ],
+      "id": "c6d73bfd-47cf-40c5-9e8c-9cfd15e0ca20",
+      "name": "Should Run Bot?3"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Gate Test Contact3').first().json.config.wooBaseUrl }}/wp-json/wc/v3/orders/{{ $('Gate Test Contact3').first().json.orderLookupId || '0' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -768,
+        368
+      ],
+      "id": "6a0192c1-9517-41f8-8b0d-451a594f2439",
+      "name": "Woo Order Lookup3",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Z9VqzrucTtbl9lZu",
+          "name": "FV store connect"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.openAiRequest }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        368,
+        384
+      ],
+      "id": "0c8a077c-3398-4fa9-a882-d4c34e5c957a",
+      "name": "OpenAI Reply3",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "oa8lM6ASGY5Ot8g8",
+          "name": "Chatwoot open ai token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const requestContext = $('Build OpenAI Request3').first().json;\nconst openAiResponse = $input.first().json;\n\nconst parseNumber = (value) => {\n  const parsed = Number.parseFloat(String(value ?? '').replace(/[^0-9.\\-]/g, ''));\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst formatPrice = (product) => {\n  const candidates = [product.effective_price, product.sale_price, product.price, product.regular_price];\n  for (const candidate of candidates) {\n    const parsed = parseNumber(candidate);\n    if (parsed !== null) {\n      return `R$ ${parsed.toFixed(2).replace('.', ',')}`;\n    }\n  }\n  return null;\n};\nconst looksPortuguese = (text) => /[Ã£ÃµÃ¡Ã©Ã­Ã³ÃºÃ§]|\\b(produtos?|preco|preÃ§o|abaixo|acima|entre|pedido|quero|preciso|gostaria|tenho|posso|sim|nao|nÃ£o)\\b/i.test(String(text || ''));\nconst isPortuguese = looksPortuguese(requestContext.originalMessage);\nconst greetingName = String(requestContext.customerName || '').trim();\nconst greeting = greetingName\n  ? (isPortuguese ? `OlÃ¡ ${greetingName}!` : `Hello ${greetingName}!`)\n  : (isPortuguese ? 'OlÃ¡!' : 'Hello!');\nconst formatRangeText = (priceFilter) => {\n  const min = parseNumber(priceFilter?.min);\n  const max = parseNumber(priceFilter?.max);\n  if (min !== null && max !== null) {\n    return isPortuguese\n      ? `entre R$ ${min.toFixed(2).replace('.', ',')} e R$ ${max.toFixed(2).replace('.', ',')}`\n      : `between R$ ${min.toFixed(2).replace('.', ',')} and R$ ${max.toFixed(2).replace('.', ',')}`;\n  }\n  if (max !== null) {\n    return isPortuguese\n      ? `abaixo de R$ ${max.toFixed(2).replace('.', ',')}`\n      : `below R$ ${max.toFixed(2).replace('.', ',')}`;\n  }\n  if (min !== null) {\n    return isPortuguese\n      ? `acima de R$ ${min.toFixed(2).replace('.', ',')}`\n      : `above R$ ${min.toFixed(2).replace('.', ',')}`;\n  }\n  return isPortuguese ? 'nessa faixa de preÃ§o' : 'in that price range';\n};\nconst sanitizeTitle = (product) => {\n  const title = String(product?.title || '').trim();\n  if (title) {\n    return title;\n  }\n  const url = String(product?.product_url || '').trim();\n  if (!url) {\n    return isPortuguese ? 'Produto sem nome' : 'Unnamed product';\n  }\n  const slug = url.split('/').filter(Boolean).pop() || url;\n  return slug.replace(/[-_]+/g, ' ');\n};\n\nlet reply = '';\nif (requestContext.priceFilterRequested) {\n  const matches = Array.isArray(requestContext.priceMatchedProducts) ? requestContext.priceMatchedProducts.slice(0, 3) : [];\n  const rangeText = formatRangeText(requestContext.priceFilter);\n  if (matches.length > 0) {\n    const intro = isPortuguese\n      ? `${greeting} Encontrei alguns produtos ${rangeText}:`\n      : `${greeting} I found some products ${rangeText}:`;\n    const lines = matches.map((product) => {\n      const title = sanitizeTitle(product);\n      const priceText = formatPrice(product);\n      const url = String(product.product_url || '').trim();\n      return `- ${title}${priceText ? `: ${priceText}` : ''}${url ? ` - ${url}` : ''}`;\n    });\n    const closing = isPortuguese\n      ? 'Se quiser, posso procurar outra faixa de preÃ§o ou um produto especÃ­fico.'\n      : 'If you want, I can look for another price range or a specific product.';\n    reply = [intro, ...lines, closing].join('\\n');\n  } else {\n    reply = isPortuguese\n      ? `${greeting} No momento, nÃ£o encontrei produtos ${rangeText} no catÃ¡logo. Se quiser, posso procurar outra faixa de preÃ§o ou encaminhar para um atendente.`\n      : `${greeting} I couldn't find products ${rangeText} in the catalog right now. If you want, I can search another price range or hand this over to a human agent.`;\n  }\n} else {\n  if (openAiResponse.statusCode === 200) {\n    reply = String(openAiResponse.body?.choices?.[0]?.message?.content || '').trim();\n  }\n\n  if (!reply) {\n    reply = `Thanks for your message. I need a human teammate to review this so we can help you correctly. You can also reach us at ${requestContext.supportEmail}.`;\n  }\n\n  reply = reply.replace(/^['\\\"]+|['\\\"]+$/g, '').trim();\n\n  const bestProductUrl = String(requestContext.bestProductUrl || '').trim();\n  if (!requestContext.priceFilterRequested && requestContext.productLookupRequested && requestContext.hasRelevantProductMatch && bestProductUrl && !reply.includes(bestProductUrl)) {\n    reply = `${reply}\\n\\n${bestProductUrl}`.trim();\n  }\n}\n\nreturn {\n  accountId: requestContext.accountId,\n  conversationId: requestContext.conversationId,\n  chatwootBaseUrl: requestContext.chatwootBaseUrl,\n  reply\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        384
+      ],
+      "id": "a076aa41-1146-4c83-ab2f-818644ef67d8",
+      "name": "Prepare Chatwoot Reply3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $('Normalize Incoming Event3').first().json;\nconst messageList = $input.first().json;\n\nconst normalizePhone = (value) => String(value || '').replace(/[^+\\d]/g, '');\nconst stripHtml = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase();\nconst parseNumber = (value) => {\n  const cleaned = String(value || '').replace(/[^0-9,.\\-]/g, '').trim();\n  if (!cleaned) {\n    return null;\n  }\n\n  const normalized = cleaned.includes(',') && cleaned.includes('.')\n    ? cleaned.replace(/\\./g, '').replace(',', '.')\n    : cleaned.replace(',', '.');\n  const parsed = Number.parseFloat(normalized);\n  return Number.isFinite(parsed) ? parsed : null;\n};\n\nconst contactPayload = messageList.meta?.contact?.payload;\nconst contact = Array.isArray(contactPayload)\n  ? (contactPayload[0] ?? {})\n  : (messageList.meta?.contact ?? {});\nconst labels = Array.isArray(messageList.meta?.labels) ? messageList.meta.labels : [];\nconst phoneNumber = normalizePhone(contact.phone_number ?? '');\nconst allowedPhones = event.config.allowedPhoneNumbers.map(normalizePhone);\nconst allowedLabels = event.config.allowedLabels.map((label) => label.toLowerCase());\nconst allowedInboxIds = event.config.allowedInboxIds.map((id) => String(id));\nconst inboxId = String(event.inboxId ?? '');\n\nconst phoneAllowed = allowedPhones.length > 0 && allowedPhones.includes(phoneNumber);\nconst labelAllowed = labels.some((label) => allowedLabels.includes(String(label).toLowerCase()));\nconst inboxAllowed = allowedInboxIds.length > 0 && allowedInboxIds.includes(inboxId);\nconst liveMode = event.config.processingMode === 'live';\n\nconst route = liveMode || phoneAllowed || labelAllowed || inboxAllowed ? 'run' : 'skip';\nconst gateReason = liveMode\n  ? 'live_mode'\n  : phoneAllowed\n    ? 'phone_allowlist'\n    : labelAllowed\n      ? 'label_allowlist'\n      : inboxAllowed\n        ? 'inbox_allowlist'\n        : 'blocked_in_test_mode';\n\nconst knowledgeBase = [\n  {\n    topic: 'shipping',\n    keywords: ['ship', 'shipping', 'delivery'],\n    answer: 'We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.'\n  },\n  {\n    topic: 'returns',\n    keywords: ['return', 'refund', 'exchange'],\n    answer: 'You can return items within 30 days of purchase if they are unused and in their original packaging.'\n  },\n  {\n    topic: 'payment',\n    keywords: ['payment', 'pay', 'card', 'bank transfer'],\n    answer: 'We accept Visa, Mastercard, PayPal, and bank transfers.'\n  },\n  {\n    topic: 'tracking',\n    keywords: ['track', 'tracking', 'where is my order', 'where order'],\n    answer: 'You can track your order using the tracking number from your shipping confirmation message.'\n  },\n  {\n    topic: 'contact',\n    keywords: ['support', 'human', 'agent', 'contact'],\n    answer: 'You can contact our support team at ' + event.config.supportEmail + '.'\n  }\n];\n\nconst lowerMessage = event.content.toLowerCase();\nconst faqMatches = knowledgeBase\n  .filter((entry) => entry.keywords.some((keyword) => lowerMessage.includes(keyword)))\n  .map(({ topic, answer }) => ({ topic, answer }))\n  .slice(0, 3);\n\nconst stopWords = new Set([\n  'the', 'and', 'for', 'with', 'this', 'that', 'have', 'from', 'what', 'your', 'about', 'please', 'need', 'want',\n  'know', 'tell', 'price', 'stock', 'order', 'where', 'when', 'does', 'will', 'show', 'much', 'how', 'can',\n  'you', 'me', 'our', 'get', 'buy', 'make', 'create', 'status', 'hello', 'hi', 'product', 'products', 'item',\n  'items', 'produto', 'produtos', 'quero', 'preciso', 'gostaria', 'sobre', 'tenho', 'tem', 'uma', 'um',\n  'support', 'human', 'agent', 'contact', 'return', 'refund', 'exchange', 'shipping', 'delivery', 'payment',\n  'track', 'tracking', 'pedido', 'pedidos', 'email', 'mail', 'rastreio', 'rastrear', 'acompanhar',\n  'below', 'under', 'less', 'than', 'above', 'over', 'between', 'which', 'cheap', 'cheaper', 'cheapest',\n  'abaixo', 'menor', 'acima', 'maior', 'entre', 'ate', 'ate', 'ate'\n]);\n\nconst normalizedContent = normalizeText(event.content)\n  .replace(/order\\s*#?\\s*\\d+/gi, ' ')\n  .replace(/[^a-z0-9\\s-]/g, ' ');\n\nconst productSearchTokens = [...new Set(\n  normalizedContent\n    .split(/\\s+/)\n    .filter((word) => word && word.length > 2 && !stopWords.has(word) && !/^\\d+$/.test(word))\n)]\n  .sort((left, right) => right.length - left.length || left.localeCompare(right))\n  .slice(0, 4);\n\nconst productSearchTerm = productSearchTokens.join(' ');\nconst hasEmailAddress = /\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/i.test(event.content);\nconst orderSupportRequested = Boolean(\n  event.detectedOrderId ||\n  hasEmailAddress ||\n  /(where\\s+is\\s+my\\s+order|track(?:ing)?|order\\s+status|status\\s+of\\s+my\\s+order|my\\s+order|pedido|rastreio|rastrear|acompanhar|status do pedido|meu pedido)/i.test(event.content)\n);\n\nconst normalizedIntentText = normalizeText(event.content);\nconst priceFilter = { requested: false, min: null, max: null };\nconst betweenMatch = normalizedIntentText.match(/\\b(?:between|entre)\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:and|e)\\s*(\\d+(?:[.,]\\d+)?)/);\nconst belowMatch = normalizedIntentText.match(/\\b(?:below|under|less than|abaixo de|menor que|ate|ate)\\s*(\\d+(?:[.,]\\d+)?)/);\nconst aboveMatch = normalizedIntentText.match(/\\b(?:above|over|more than|acima de|maior que)\\s*(\\d+(?:[.,]\\d+)?)/);\n\nif (betweenMatch) {\n  const firstValue = parseNumber(betweenMatch[1]);\n  const secondValue = parseNumber(betweenMatch[2]);\n  if (firstValue !== null && secondValue !== null) {\n    priceFilter.requested = true;\n    priceFilter.min = Math.min(firstValue, secondValue);\n    priceFilter.max = Math.max(firstValue, secondValue);\n  }\n} else if (belowMatch) {\n  const maxValue = parseNumber(belowMatch[1]);\n  if (maxValue !== null) {\n    priceFilter.requested = true;\n    priceFilter.max = maxValue;\n  }\n} else if (aboveMatch) {\n  const minValue = parseNumber(aboveMatch[1]);\n  if (minValue !== null) {\n    priceFilter.requested = true;\n    priceFilter.min = minValue;\n  }\n}\n\nconst productLookupRequested = !orderSupportRequested && (productSearchTokens.length > 0 || priceFilter.requested);\n\nconst recentMessages = (Array.isArray(messageList.payload) ? messageList.payload : [])\n  .filter((message) => !message.private && String(message.content || '').trim())\n  .slice(-event.config.maxConversationMessages)\n  .map((message) => ({\n    role: message.sender_type === 'contact' || message.message_type === 0 ? 'customer' : 'agent',\n    content: stripHtml(message.content),\n    created_at: message.created_at\n  }));\n\nconst createOrderRequested = /(create|place|buy|purchase).{0,20}order|order.{0,20}(create|place|buy|purchase)/i.test(event.content);\n\nreturn {\n  route,\n  gateReason,\n  accountId: event.accountId,\n  conversationId: event.conversationId,\n  inboxId: event.inboxId,\n  content: event.content,\n  orderLookupId: event.detectedOrderId,\n  productSearchTerm,\n  productSearchTokens,\n  productLookupRequested,\n  orderSupportRequested,\n  hasEmailAddress,\n  priceFilter,\n  createOrderRequested,\n  contactName: contact.name ?? '',\n  contactPhone: phoneNumber,\n  labels,\n  faqMatches,\n  recentMessages,\n  config: event.config\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        384
+      ],
+      "id": "b75a4199-6265-4ef2-a56d-c3eb7e1d39e7",
+      "name": "Gate Test Contact3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all()\n  .map((item) => item.json ?? {})\n  .filter((row) => {\n    if (!row || typeof row !== 'object') {\n      return false;\n    }\n\n    return Object.keys(row).length > 0 && [\n      row.custom_title,\n      row.product_url,\n      row.product_sku,\n      row.product_id,\n      row.unique_id\n    ].some((value) => String(value || '').trim().length > 0);\n  });\n\nreturn {\n  body: rows,\n  statusCode: 200,\n  productSearch: {\n    raw_candidate_count: rows.length\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        384
+      ],
+      "id": "a9e07bc4-eebc-4ee5-91c5-40e802907254",
+      "name": "Merge Product Catalog Rows3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const supportContext = $('Gate Test Contact3').first().json;\nconst catalogResponse = $input.first().json ?? {};\n\nconst stripText = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst normalizeText = (value) => stripText(value)\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase();\nconst parseNumber = (value) => {\n  const cleaned = String(value || '').replace(/[^0-9,.\\-]/g, '').trim();\n  if (!cleaned) {\n    return null;\n  }\n\n  const normalized = cleaned.includes(',') && cleaned.includes('.')\n    ? cleaned.replace(/\\./g, '').replace(',', '.')\n    : cleaned.replace(',', '.');\n  const parsed = Number.parseFloat(normalized);\n  return Number.isFinite(parsed) ? parsed : null;\n};\n\nconst rows = Array.isArray(catalogResponse.body) ? catalogResponse.body : [];\nconst getCatalogTitle = (row) => row.custom_title || row.product_url || row.product_sku || row.unique_id || row.product_id || '';\nconst getCanonicalProductUrl = (value) => String(value || '').trim().split('?')[0];\nconst getEffectivePrice = (row) => {\n  const priceCandidates = [row.sale_price, row.price, row.regular_price];\n  for (const candidate of priceCandidates) {\n    const parsed = parseNumber(candidate);\n    if (parsed !== null) {\n      return parsed;\n    }\n  }\n  return null;\n};\n\nconst productLookupRequested = Boolean(supportContext.productLookupRequested);\nconst priceFilter = supportContext.priceFilter ?? { requested: false, min: null, max: null };\nconst priceFilterRequested = Boolean(priceFilter.requested);\nconst queryTokens = Array.isArray(supportContext.productSearchTokens) && supportContext.productSearchTokens.length > 0\n  ? supportContext.productSearchTokens.map((token) => normalizeText(token)).filter(Boolean)\n  : [];\nconst hasTextQuery = productLookupRequested && queryTokens.length > 0;\nconst queryText = hasTextQuery\n  ? normalizeText(supportContext.productSearchTerm || queryTokens.join(' '))\n  : '';\n\nif (!productLookupRequested) {\n  return {\n    ...catalogResponse,\n    body: rows.map((row) => ({\n      ...row,\n      catalog_title: getCatalogTitle(row),\n      canonical_product_url: getCanonicalProductUrl(row.product_url),\n      effective_price: getEffectivePrice(row),\n      match_score: 0\n    })),\n    productSearch: {\n      source: 'google_sheet',\n      requested: false,\n      search_term: supportContext.productSearchTerm,\n      requested_tokens: supportContext.productSearchTokens ?? [],\n      price_filter: priceFilter,\n      result_count: rows.length,\n      top_match_name: null,\n      top_match_url: null,\n      top_match_score: null\n    }\n  };\n}\n\nconst getSearchableFields = (row) => ({\n  title: normalizeText(getCatalogTitle(row)),\n  url: normalizeText(row.product_url),\n  sku: normalizeText(row.product_sku),\n  manufacturer: normalizeText(row.product_manufacturer),\n  tags: normalizeText(row.product_tags),\n  summary: normalizeText([row.custom_text, row.custom_text1, row.custom_text2].filter(Boolean).join(' ')),\n  stock: normalizeText(row.stock_status),\n  status: normalizeText(row.status),\n  price: normalizeText(row.price),\n  regularPrice: normalizeText(row.regular_price),\n  salePrice: normalizeText(row.sale_price)\n});\n\nconst filteredRows = rows.filter((row) => {\n  if (!priceFilterRequested) {\n    return true;\n  }\n\n  const effectivePrice = getEffectivePrice(row);\n  if (effectivePrice === null) {\n    return false;\n  }\n  if (priceFilter.min !== null && effectivePrice < Number(priceFilter.min)) {\n    return false;\n  }\n  if (priceFilter.max !== null && effectivePrice > Number(priceFilter.max)) {\n    return false;\n  }\n  return true;\n});\n\nconst scoreRow = (row) => {\n  const fields = getSearchableFields(row);\n  const effectivePrice = getEffectivePrice(row);\n  let score = 0;\n\n  if (hasTextQuery && queryText) {\n    if (fields.title === queryText) {\n      score += 1400;\n    }\n    if (fields.title.startsWith(queryText)) {\n      score += 950;\n    }\n    if (fields.title.includes(queryText)) {\n      score += 700;\n    }\n    if (fields.url.includes(queryText)) {\n      score += 350;\n    }\n  }\n\n  let fieldHits = 0;\n  if (hasTextQuery) {\n    for (const token of queryTokens) {\n      if (fields.title.split(/\\s+/).includes(token)) {\n        fieldHits += 1;\n        score += 220;\n      } else if (fields.title.includes(token)) {\n        fieldHits += 1;\n        score += 170;\n      } else if (fields.url.includes(token)) {\n        fieldHits += 1;\n        score += 120;\n      } else if (fields.sku.includes(token)) {\n        fieldHits += 1;\n        score += 90;\n      } else if (fields.tags.includes(token) || fields.manufacturer.includes(token)) {\n        fieldHits += 1;\n        score += 70;\n      } else if (fields.summary.includes(token)) {\n        fieldHits += 1;\n        score += 25;\n      }\n    }\n\n    if (queryTokens.length > 0 && fieldHits === queryTokens.length) {\n      score += 260;\n    }\n    if (queryTokens.length > 0 && fieldHits === 0) {\n      score -= 120;\n    }\n  }\n\n  if (priceFilterRequested && effectivePrice !== null) {\n    score += 300;\n    if (priceFilter.max !== null) {\n      score += Math.max(0, 100 - effectivePrice);\n    } else if (priceFilter.min !== null) {\n      score += Math.min(100, effectivePrice);\n    }\n  }\n\n  if (fields.stock === 'instock') {\n    score += 25;\n  } else if (fields.stock === 'outofstock') {\n    score -= 10;\n  }\n\n  if (fields.status === 'publish' || fields.status === 'active') {\n    score += 5;\n  }\n\n  return score;\n};\n\nconst sortedBody = filteredRows\n  .map((row) => ({\n    ...row,\n    catalog_title: getCatalogTitle(row),\n    canonical_product_url: getCanonicalProductUrl(row.product_url),\n    effective_price: getEffectivePrice(row),\n    match_score: scoreRow(row)\n  }))\n  .sort((left, right) => {\n    if (priceFilterRequested && !hasTextQuery) {\n      const leftPrice = Number.isFinite(left.effective_price) ? left.effective_price : Number.POSITIVE_INFINITY;\n      const rightPrice = Number.isFinite(right.effective_price) ? right.effective_price : Number.POSITIVE_INFINITY;\n      if (leftPrice !== rightPrice) {\n        return leftPrice - rightPrice;\n      }\n    }\n\n    return right.match_score - left.match_score || String(left.catalog_title || '').localeCompare(String(right.catalog_title || ''));\n  });\n\nconst getDedupKey = (row) => {\n  const productId = String(row.product_id || '').trim();\n  if (productId) {\n    return `product:${productId}`;\n  }\n\n  const canonicalUrl = String(row.canonical_product_url || '').trim();\n  if (canonicalUrl) {\n    return `url:${canonicalUrl}`;\n  }\n\n  const normalizedTitle = normalizeText(row.catalog_title || '');\n  if (normalizedTitle) {\n    return `title:${normalizedTitle}`;\n  }\n\n  const uniqueId = String(row.unique_id || row.variation_id || '').trim();\n  if (uniqueId) {\n    return `unique:${uniqueId}`;\n  }\n\n  return `fallback:${Math.random().toString(36).slice(2)}`;\n};\n\nconst dedupedBody = [];\nconst seenKeys = new Set();\nfor (const row of sortedBody) {\n  const dedupKey = getDedupKey(row);\n  if (seenKeys.has(dedupKey)) {\n    continue;\n  }\n  seenKeys.add(dedupKey);\n  dedupedBody.push(row);\n}\n\nreturn {\n  ...catalogResponse,\n  body: dedupedBody,\n  productSearch: {\n    source: 'google_sheet',\n    requested: true,\n    search_term: supportContext.productSearchTerm,\n    requested_tokens: supportContext.productSearchTokens ?? [],\n    price_filter: priceFilter,\n    result_count: dedupedBody.length,\n    top_match_name: dedupedBody[0]?.catalog_title ?? null,\n    top_match_url: dedupedBody[0]?.canonical_product_url ?? dedupedBody[0]?.product_url ?? null,\n    top_match_score: dedupedBody[0]?.match_score ?? null\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        384
+      ],
+      "id": "626c28bf-245b-414f-871f-8af7b055e371",
+      "name": "Sort Product Matches3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const supportContext = $('Gate Test Contact3').first().json;\nconst orderResponse = $('Woo Order Lookup3').first().json ?? {};\nconst productResponse = $('Sort Product Matches3').first().json ?? {};\n\nconst stripText = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst orderBody = orderResponse.body ?? {};\nconst orderSummary = orderResponse.statusCode === 200 && orderBody.id\n  ? {\n      id: orderBody.id,\n      status: orderBody.status,\n      currency: orderBody.currency,\n      total: orderBody.total,\n      date_created: orderBody.date_created,\n      billing_email: orderBody.billing?.email,\n      billing_phone: orderBody.billing?.phone,\n      line_items: Array.isArray(orderBody.line_items)\n        ? orderBody.line_items.map((item) => ({\n            product_id: item.product_id,\n            name: item.name,\n            quantity: item.quantity,\n            total: item.total\n          }))\n        : []\n    }\n  : null;\n\nconst productLookupRequested = Boolean(supportContext.productLookupRequested);\nconst priceFilter = supportContext.priceFilter ?? { requested: false, min: null, max: null };\nconst priceFilterRequested = Boolean(priceFilter.requested);\nconst sortedProducts = Array.isArray(productResponse.body) ? productResponse.body : [];\nconst positiveProducts = sortedProducts.filter((product) => Number(product.match_score ?? 0) > 0);\nconst selectedProducts = productLookupRequested\n  ? (positiveProducts.length > 0 ? positiveProducts : sortedProducts).slice(0, 5)\n  : [];\nconst productSummary = selectedProducts.map((product) => ({\n  product_id: product.product_id || '',\n  variation_id: product.variation_id || '',\n  unique_id: product.unique_id || '',\n  title: product.catalog_title || product.custom_title || '',\n  product_url: product.canonical_product_url || product.product_url || '',\n  price: product.price || '',\n  regular_price: product.regular_price || '',\n  sale_price: product.sale_price || '',\n  effective_price: product.effective_price ?? null,\n  status: product.status || '',\n  stock_status: product.stock_status || '',\n  stock_quantity: product.stock_quantity || '',\n  sku: product.product_sku || '',\n  manufacturer: product.product_manufacturer || '',\n  tags: product.product_tags || '',\n  gtin: product.wpfoof_gtin_name || '',\n  summary: stripText([product.custom_text, product.custom_text1, product.custom_text2].filter(Boolean).join(' | ')),\n  match_score: Number(product.match_score ?? 0)\n}));\n\nconst bestProductMatch = productSummary[0] ?? null;\nconst hasRelevantProductMatch = Boolean(\n  productLookupRequested &&\n  bestProductMatch &&\n  (\n    priceFilterRequested\n      ? productSummary.length > 0\n      : bestProductMatch.match_score >= 300\n  )\n);\nconst priceMatchedProducts = priceFilterRequested && hasRelevantProductMatch\n  ? productSummary.slice(0, 5)\n  : [];\n\nconst retrievedContext = {\n  customer: {\n    name: supportContext.contactName,\n    phone_number: supportContext.contactPhone\n  },\n  routing: {\n    processing_mode: supportContext.config.processingMode,\n    gate_reason: supportContext.gateReason,\n    labels: supportContext.labels\n  },\n  order_lookup: orderSummary,\n  product_search: {\n    source: 'google_sheet',\n    requested: productLookupRequested,\n    search_term: productResponse.productSearch?.search_term ?? supportContext.productSearchTerm,\n    requested_tokens: productResponse.productSearch?.requested_tokens ?? supportContext.productSearchTokens ?? [],\n    price_filter: priceFilter,\n    raw_candidate_count: productResponse.productSearch?.result_count ?? sortedProducts.length,\n    has_relevant_match: hasRelevantProductMatch,\n    best_match_name: hasRelevantProductMatch ? bestProductMatch?.title ?? null : null,\n    best_match_url: hasRelevantProductMatch ? bestProductMatch?.product_url ?? null : null,\n    best_match_score: hasRelevantProductMatch ? bestProductMatch?.match_score ?? null : null\n  },\n  product_lookup: hasRelevantProductMatch ? productSummary : [],\n  faq_matches: supportContext.faqMatches,\n  recent_messages: supportContext.recentMessages,\n  order_creation: {\n    requested: supportContext.createOrderRequested,\n    enabled: supportContext.config.orderCreationEnabled,\n    instruction: supportContext.config.orderCreationEnabled\n      ? 'Order creation is enabled only when all required fields are collected and explicitly confirmed.'\n      : 'Order creation is disabled in this phase. If the customer wants to place an order, collect details and route to a human teammate.'\n  }\n};\n\nconst systemMessage = [\n  'You are the Famivita AI customer support agent working inside Chatwoot.',\n  'Reply in the same language as the customer whenever possible.',\n  'Use only the retrieved context for factual claims about orders, products, shipping, returns, payment, or policies.',\n  'Only treat product_lookup as relevant when product_search.requested is true and product_search.has_relevant_match is true.',\n  'If product_search.requested is false, do not mention products or include product URLs.',\n  'If product_search.has_relevant_match is true, do not say the product is unavailable or missing from the catalog.',\n  'If product_search.price_filter.requested is true and product_lookup has matches, list up to 3 matching products with name, price, and product_url.',\n  'If product_search.price_filter.requested is true and product_lookup is empty, clearly say that no products were found for that price range.',\n  'If the best product has stock_status equal to outofstock, say it exists but is currently out of stock.',\n  'When you confirm a specific product match and best_match_url is available, include that exact URL in the reply.',\n  'If the retrieved context is missing or insufficient, say that clearly and ask one short clarifying question or suggest a human handoff.',\n  'Never invent order status, delivery dates, product details, stock, prices, promotions, or medical advice.',\n  'Keep replies concise, warm, and suitable for WhatsApp.',\n  'If you need to escalate, direct the customer to ' + supportContext.config.supportEmail + '.'\n].join('\\n');\n\nconst userMessage = [\n  'Latest customer message: ' + supportContext.content,\n  'Customer name: ' + (supportContext.contactName || 'Unknown customer'),\n  'Retrieved context JSON: ' + JSON.stringify(retrievedContext)\n].join('\\n\\n');\n\nreturn {\n  accountId: supportContext.accountId,\n  conversationId: supportContext.conversationId,\n  chatwootBaseUrl: supportContext.config.chatwootBaseUrl,\n  supportEmail: supportContext.config.supportEmail,\n  customerName: supportContext.contactName || '',\n  originalMessage: supportContext.content,\n  productLookupRequested,\n  priceFilterRequested,\n  priceFilter,\n  priceMatchedProducts,\n  hasRelevantProductMatch,\n  bestProductUrl: (!priceFilterRequested && hasRelevantProductMatch) ? bestProductMatch?.product_url ?? null : null,\n  bestProductName: hasRelevantProductMatch ? bestProductMatch?.title ?? null : null,\n  openAiRequest: {\n    model: supportContext.config.openAiModel,\n    temperature: 0.2,\n    messages: [\n      {\n        role: 'system',\n        content: systemMessage\n      },\n      {\n        role: 'user',\n        content: userMessage\n      }\n    ]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        384
+      ],
+      "id": "c8123ee5-4e23-4c75-b07b-bbb247f3c6e1",
+      "name": "Build OpenAI Request3"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=1GCl-6QwyPEYiN41LNUIHZaXeZ6mEpFopYM0cZzfZKsI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "FV_live_product",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -528,
+        368
+      ],
+      "id": "983a4996-7ab1-474e-a73d-98e8abd16ed6",
+      "name": "Google Sheet Product Catalog4",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "33OaFvyrcaNWPBsR",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwootBaseUrl }}/api/v1/accounts/{{ $json.accountId }}/conversations/{{ $json.conversationId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.reply, message_type: 'outgoing', private: false, content_type: 'text' } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        736,
+        384
+      ],
+      "id": "8904ebc9-3375-4674-94b5-6011b4874177",
+      "name": "Send Reply to Chatwoot3",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SbmBMJv7nxEADt7f",
+          "name": "chatwoot token"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "Normalize Incoming Event3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Incoming Event3": {
+      "main": [
+        [
+          {
+            "node": "Should Inspect Event?3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Inspect Event?3": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation Messages3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation Messages3": {
+      "main": [
+        [
+          {
+            "node": "Gate Test Contact3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Run Bot?3": {
+      "main": [
+        [
+          {
+            "node": "Woo Order Lookup3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Woo Order Lookup3": {
+      "main": [
+        [
+          {
+            "node": "Google Sheet Product Catalog4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply3": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chatwoot Reply3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chatwoot Reply3": {
+      "main": [
+        [
+          {
+            "node": "Send Reply to Chatwoot3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate Test Contact3": {
+      "main": [
+        [
+          {
+            "node": "Should Run Bot?3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Product Catalog Rows3": {
+      "main": [
+        [
+          {
+            "node": "Sort Product Matches3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort Product Matches3": {
+      "main": [
+        [
+          {
+            "node": "Build OpenAI Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI Request3": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheet Product Catalog4": {
+      "main": [
+        [
+          {
+            "node": "Merge Product Catalog Rows3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1760a8e9-e2e7-4c98-a816-0026adcdff58",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "365f57b0e0eac50a41d76dc86a287786968875fd8f0a20f7c48135cf59f09396"
+  },
+  "id": "Mm0ex3rqj0YPsyFb",
+  "tags": []
+}

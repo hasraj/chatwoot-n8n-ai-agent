@@ -1,0 +1,502 @@
+﻿{
+    "name":  "chatwoot ai test",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "chatwoot-ai-agent",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -3088,
+                                       336
+                                   ],
+                      "id":  "ca1f0c0b-5750-496d-a9ac-11ebe37bb745",
+                      "name":  "Webhook",
+                      "webhookId":  "f7e96fa9-b2b4-406a-915d-7370d94e1e13"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const item = $input.first().json;\nconst body = item.body ?? item;\n\nconst normalizeBaseUrl = (value, fallback) =\u003e {\n  const finalValue = String(value || fallback || \u0027\u0027).trim();\n  return finalValue.replace(/\\/$/, \u0027\u0027);\n};\n\nconst content = String(body.content ?? \u0027\u0027).trim();\nconst senderType = body.sender?.type ?? body.sender_type ?? body.conversation?.meta?.sender?.type ?? \u0027\u0027;\nconst messageType = body.message_type;\nconst isIncoming = messageType === \u0027incoming\u0027 || messageType === 0 || messageType === \u00270\u0027;\nconst isPrivate = Boolean(body.private);\nconst shouldInspect =\n  body.event === \u0027message_created\u0027 \u0026\u0026\n  isIncoming \u0026\u0026\n  senderType === \u0027contact\u0027 \u0026\u0026\n  !isPrivate \u0026\u0026\n  content.length \u003e 0;\n\nconst orderMatch =\n  content.match(/(?:order\\s*#?\\s*|#)(\\d{4,})\\b/i) ||\n  content.match(/\\b(\\d{5,})\\b/);\n\nreturn {\n  route: shouldInspect ? \u0027process\u0027 : \u0027ignore\u0027,\n  event: body.event ?? \u0027\u0027,\n  isIncoming,\n  senderType,\n  isPrivate,\n  content_length: content.length,\n  messageId: body.id ?? null,\n  conversationId: body.conversation?.id ?? body.conversation_id ?? null,\n  accountId: body.account?.id ?? body.account_id ?? null,\n  inboxId: body.inbox?.id ?? body.inbox_id ?? body.conversation?.inbox_id ?? null,\n  content,\n  senderType,\n  messageType,\n  detectedOrderId: orderMatch ? orderMatch[1] : \u0027\u0027,\n  config: {\n    chatwootBaseUrl: normalizeBaseUrl(\u0027\u0027, \u0027https://sac.famivita.com\u0027),\n    wooBaseUrl: normalizeBaseUrl(\u0027\u0027, \u0027https://famivita.com.br\u0027),\n    openAiModel: \u0027gpt-4.1-mini\u0027,\n    processingMode: \u0027live\u0027,\n    allowedPhoneNumbers: [],\n    allowedLabels: [],\n    allowedInboxIds: [],\n    maxConversationMessages: 8,\n    supportEmail: \u0027support@famivita.com\u0027,\n    orderCreationEnabled: false\n  }\n};\n"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -2864,
+                                       336
+                                   ],
+                      "id":  "5a0505b7-1aa5-4454-9c20-52baebf7ca8f",
+                      "name":  "Normalize Incoming Event"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "aad80f87-162f-48c3-b03d-2a5448d6754b",
+                                                                                   "leftValue":  "={{ $json.route }}",
+                                                                                   "rightValue":  "process",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -2656,
+                                       336
+                                   ],
+                      "id":  "56c27e5e-98d9-4d2d-acd1-cdc1f0211da4",
+                      "name":  "Should Inspect Event?"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "={{ $(\u0027Normalize Incoming Event\u0027).first().json.config.chatwootBaseUrl }}/api/v1/accounts/{{ $(\u0027Normalize Incoming Event\u0027).first().json.accountId }}/conversations/{{ $(\u0027Normalize Incoming Event\u0027).first().json.conversationId }}/messages",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "accept",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -2400,
+                                       320
+                                   ],
+                      "id":  "15df137b-289f-4dcc-a3a9-16ae0925da0d",
+                      "name":  "Get Conversation Messages",
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "SbmBMJv7nxEADt7f",
+                                                                 "name":  "chatwoot token"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ca1db5cd-a76c-408b-8bae-38bf4c22554f",
+                                                                                   "leftValue":  "={{ $json.route }}",
+                                                                                   "rightValue":  "run",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1952,
+                                       336
+                                   ],
+                      "id":  "a759c2ea-71f5-45c2-86f0-a770a6661096",
+                      "name":  "Should Run Bot?"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "={{ $(\u0027Gate Test Contact\u0027).first().json.config.wooBaseUrl }}/wp-json/wc/v3/orders/{{ $(\u0027Gate Test Contact\u0027).first().json.orderLookupId || \u00270\u0027 }}",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpBasicAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "accept",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -1712,
+                                       256
+                                   ],
+                      "id":  "9071d716-3018-46fa-89ce-f5b3842dcf66",
+                      "name":  "Woo Order Lookup",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "0dCrvzgHAmgnkQW5",
+                                                                 "name":  "Header Auth account"
+                                                             },
+                                          "httpBasicAuth":  {
+                                                                "id":  "Z9VqzrucTtbl9lZu",
+                                                                "name":  "FV store connect"
+                                                            }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "url":  "={{ $(\u0027Gate Test Contact\u0027).first().json.config.wooBaseUrl }}/wp-json/wc/v3/products?search={{ encodeURIComponent($(\u0027Gate Test Contact\u0027).first().json.productSearchTerm || $(\u0027Gate Test Contact\u0027).first().json.primaryProductToken || \u0027zzzz-no-match-zzzz\u0027) }}\u0026per_page=30\u0026status=publish",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpBasicAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "accept",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -1488,
+                                       256
+                                   ],
+                      "id":  "a2129c16-1595-4b1f-9ef7-b615464d4d3f",
+                      "name":  "Woo Product Search",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpBasicAuth":  {
+                                                                "id":  "Z9VqzrucTtbl9lZu",
+                                                                "name":  "FV store connect"
+                                                            }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const supportContext = $(\u0027Gate Test Contact\u0027).first().json;\nconst orderResponse = $(\u0027Woo Order Lookup\u0027).first().json ?? {};\nconst productResponse = $(\u0027Sort Product Matches\u0027).first().json ?? {};\n\nconst stripHtml = (value) =\u003e String(value || \u0027\u0027).replace(/\u003c[^\u003e]+\u003e/g, \u0027 \u0027).replace(/\\s+/g, \u0027 \u0027).trim();\n\nconst orderBody = orderResponse.body ?? {};\nconst orderSummary = orderResponse.statusCode === 200 \u0026\u0026 orderBody.id\n  ? {\n      id: orderBody.id,\n      status: orderBody.status,\n      currency: orderBody.currency,\n      total: orderBody.total,\n      date_created: orderBody.date_created,\n      billing_email: orderBody.billing?.email,\n      billing_phone: orderBody.billing?.phone,\n      line_items: Array.isArray(orderBody.line_items)\n        ? orderBody.line_items.map((item) =\u003e ({\n            product_id: item.product_id,\n            name: item.name,\n            quantity: item.quantity,\n            total: item.total\n          }))\n        : []\n    }\n  : null;\n\nconst sortedProducts = Array.isArray(productResponse.body) ? productResponse.body : [];\nconst positiveProducts = sortedProducts.filter((product) =\u003e Number(product.match_score ?? 0) \u003e 0);\nconst selectedProducts = (positiveProducts.length \u003e 0 ? positiveProducts : sortedProducts).slice(0, 5);\nconst productSummary = selectedProducts.map((product) =\u003e ({\n  id: product.id,\n  name: product.name,\n  slug: product.slug,\n  sku: product.sku,\n  price: product.price,\n  regular_price: product.regular_price,\n  sale_price: product.sale_price,\n  stock_status: product.stock_status,\n  permalink: product.permalink,\n  short_description: stripHtml(product.short_description || product.description || \u0027\u0027),\n  match_score: Number(product.match_score ?? 0)\n}));\n\nconst bestProductMatch = productSummary[0] ?? null;\nconst hasRelevantProductMatch = Boolean(bestProductMatch \u0026\u0026 bestProductMatch.match_score \u003e= 100);\n\nconst retrievedContext = {\n  customer: {\n    name: supportContext.contactName,\n    phone_number: supportContext.contactPhone\n  },\n  routing: {\n    processing_mode: supportContext.config.processingMode,\n    gate_reason: supportContext.gateReason,\n    labels: supportContext.labels\n  },\n  order_lookup: orderSummary,\n  product_search: {\n    search_term: productResponse.productSearch?.search_term ?? supportContext.productSearchTerm,\n    requested_tokens: productResponse.productSearch?.requested_tokens ?? supportContext.productSearchTokens ?? [],\n    raw_candidate_count: productResponse.productSearch?.result_count ?? sortedProducts.length,\n    has_relevant_match: hasRelevantProductMatch,\n    best_match_name: bestProductMatch?.name ?? null,\n    best_match_url: bestProductMatch?.permalink ?? null,\n    best_match_score: bestProductMatch?.match_score ?? null\n  },\n  product_lookup: productSummary,\n  faq_matches: supportContext.faqMatches,\n  recent_messages: supportContext.recentMessages,\n  order_creation: {\n    requested: supportContext.createOrderRequested,\n    enabled: supportContext.config.orderCreationEnabled,\n    instruction: supportContext.config.orderCreationEnabled\n      ? \u0027Order creation is enabled only when all required fields are collected and explicitly confirmed.\u0027\n      : \u0027Order creation is disabled in this phase. If the customer wants to place an order, collect details and route to a human teammate.\u0027\n  }\n};\n\nconst systemMessage = [\n  \u0027You are the Famivita AI customer support agent working inside Chatwoot.\u0027,\n  \u0027Reply in the same language as the customer whenever possible.\u0027,\n  \u0027Use only the retrieved context for factual claims about orders, products, shipping, returns, payment, or policies.\u0027,\n  \u0027product_lookup is already sorted by product-title relevance, so the first item is the best match for the customer message.\u0027,\n  \u0027If product_search.has_relevant_match is true, do not say the product is unavailable or missing from the catalog.\u0027,\n  \u0027If the best product has stock_status equal to outofstock, say it exists but is currently out of stock.\u0027,\n  \u0027If the retrieved context is missing or insufficient, say that clearly and ask one short clarifying question or suggest a human handoff.\u0027,\n  \u0027Never invent order status, delivery dates, product details, stock, prices, promotions, or medical advice.\u0027,\n  \u0027Keep replies concise, warm, and suitable for WhatsApp.\u0027,\n  `If you need to escalate, direct the customer to ${supportContext.config.supportEmail}.`\n].join(\u0027\\n\u0027);\n\nconst userMessage = [\n  `Latest customer message: ${supportContext.content}`,\n  `Customer name: ${supportContext.contactName || \u0027Unknown customer\u0027}`,\n  `Retrieved context JSON: ${JSON.stringify(retrievedContext)}`\n].join(\u0027\\n\\n\u0027);\n\nreturn {\n  accountId: supportContext.accountId,\n  conversationId: supportContext.conversationId,\n  chatwootBaseUrl: supportContext.config.chatwootBaseUrl,\n  supportEmail: supportContext.config.supportEmail,\n  openAiRequest: {\n    model: supportContext.config.openAiModel,\n    temperature: 0.2,\n    messages: [\n      {\n        role: \u0027system\u0027,\n        content: systemMessage\n      },\n      {\n        role: \u0027user\u0027,\n        content: userMessage\n      }\n    ]\n  }\n};"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1072,
+                                       256
+                                   ],
+                      "id":  "4e267b9e-8667-4640-bff3-65e2796063bc",
+                      "name":  "Build OpenAI Request"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.openai.com/v1/chat/completions",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpBearerAuth",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ $json.openAiRequest }}",
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -848,
+                                       256
+                                   ],
+                      "id":  "d1dfcc55-6043-47ac-84ca-d85622764d83",
+                      "name":  "OpenAI Reply",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpBearerAuth":  {
+                                                                 "id":  "oa8lM6ASGY5Ot8g8",
+                                                                 "name":  "Chatwoot open ai token"
+                                                             }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const requestContext = $(\u0027Build OpenAI Request\u0027).first().json;\nconst openAiResponse = $input.first().json;\n\nlet reply = \u0027\u0027;\nif (openAiResponse.statusCode === 200) {\n  reply = String(openAiResponse.body?.choices?.[0]?.message?.content || \u0027\u0027).trim();\n}\n\nif (!reply) {\n  reply = `Thanks for your message. I need a human teammate to review this so we can help you correctly. You can also reach us at ${requestContext.supportEmail}.`;\n}\n\nreply = reply.replace(/^[\u0027\\\"]+|[\u0027\\\"]+$/g, \u0027\u0027).trim();\n\nreturn {\n  accountId: requestContext.accountId,\n  conversationId: requestContext.conversationId,\n  chatwootBaseUrl: requestContext.chatwootBaseUrl,\n  reply\n};"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -624,
+                                       256
+                                   ],
+                      "id":  "85907b4d-2082-46a0-8703-ec49305d6820",
+                      "name":  "Prepare Chatwoot Reply"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "={{ $json.chatwootBaseUrl }}/api/v1/accounts/{{ $json.accountId }}/conversations/{{ $json.conversationId }}/messages",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "api_access_token",
+                                                                                        "value":  "={{ $env.CHATWOOT_API_TOKEN }}"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ { content: $json.reply, message_type: \u0027outgoing\u0027, private: false, content_type: \u0027text\u0027 } }}",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       -400,
+                                       256
+                                   ],
+                      "id":  "1f872942-2e3b-481e-bb46-1599128158ac",
+                      "name":  "Send Reply to Chatwoot"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const supportContext = $(\u0027Gate Test Contact\u0027).first().json;\nconst productResponse = $input.first().json ?? {};\n\nconst stripHtml = (value) =\u003e String(value || \u0027\u0027).replace(/\u003c[^\u003e]+\u003e/g, \u0027 \u0027).replace(/\\s+/g, \u0027 \u0027).trim();\nconst normalizeText = (value) =\u003e stripHtml(value)\n  .normalize(\u0027NFD\u0027)\n  .replace(/[\\u0300-\\u036f]/g, \u0027\u0027)\n  .toLowerCase();\nconst tokenize = (value) =\u003e normalizeText(value)\n  .split(/[^a-z0-9]+/)\n  .filter((token) =\u003e token.length \u003e 1);\n\nconst productBody = Array.isArray(productResponse.body) ? productResponse.body : [];\nconst queryTokens = Array.isArray(supportContext.productSearchTokens) \u0026\u0026 supportContext.productSearchTokens.length \u003e 0\n  ? supportContext.productSearchTokens.map((token) =\u003e normalizeText(token)).filter(Boolean)\n  : [...new Set(tokenize(supportContext.productSearchTerm || supportContext.content))];\nconst queryText = normalizeText(supportContext.productSearchTerm || queryTokens.join(\u0027 \u0027) || supportContext.content);\n\nconst scoreProduct = (product) =\u003e {\n  const nameText = normalizeText(product.name);\n  const slugText = normalizeText(String(product.slug || \u0027\u0027).replace(/-/g, \u0027 \u0027));\n  const skuText = normalizeText(product.sku);\n  const descriptionText = normalizeText(product.short_description || product.description || \u0027\u0027);\n\n  let score = 0;\n  if (queryText) {\n    if (nameText === queryText || slugText === queryText) {\n      score += 1400;\n    }\n    if (nameText.startsWith(queryText) || slugText.startsWith(queryText)) {\n      score += 950;\n    }\n    if (nameText.includes(queryText) || slugText.includes(queryText)) {\n      score += 700;\n    }\n  }\n\n  let titleHits = 0;\n  for (const token of queryTokens) {\n    const inName = nameText.split(/\\s+/).includes(token);\n    const inNameLoose = nameText.includes(token);\n    const inSlug = slugText.split(/\\s+/).includes(token);\n    const inSlugLoose = slugText.includes(token);\n    const inSku = skuText.includes(token);\n    const inDescription = descriptionText.includes(token);\n\n    if (inName || inSlug) {\n      titleHits += 1;\n      score += 220;\n    } else if (inNameLoose || inSlugLoose) {\n      titleHits += 1;\n      score += 170;\n    } else if (inSku) {\n      score += 80;\n    } else if (inDescription) {\n      score += 15;\n    }\n  }\n\n  if (queryTokens.length \u003e 0 \u0026\u0026 titleHits === queryTokens.length) {\n    score += 260;\n  }\n  if (queryTokens.length \u003e 0 \u0026\u0026 titleHits === 0) {\n    score -= 120;\n  }\n  if (product.stock_status === \u0027instock\u0027) {\n    score += 25;\n  } else if (product.stock_status === \u0027outofstock\u0027) {\n    score -= 10;\n  }\n\n  return score;\n};\n\nconst sortedBody = productBody\n  .map((product) =\u003e ({ ...product, match_score: scoreProduct(product) }))\n  .sort((left, right) =\u003e right.match_score - left.match_score || String(left.name || \u0027\u0027).localeCompare(String(right.name || \u0027\u0027)));\n\nreturn {\n  ...productResponse,\n  body: sortedBody,\n  productSearch: {\n    search_term: supportContext.productSearchTerm,\n    requested_tokens: supportContext.productSearchTokens ?? [],\n    result_count: sortedBody.length,\n    top_match_name: sortedBody[0]?.name ?? null,\n    top_match_url: sortedBody[0]?.permalink ?? null,\n    top_match_score: sortedBody[0]?.match_score ?? null\n  }\n};"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -1264,
+                                       240
+                                   ],
+                      "id":  "a84a17a6-36a6-4b88-b57c-7020d6124356",
+                      "name":  "Sort Product Matches"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const event = $(\u0027Normalize Incoming Event\u0027).first().json;\nconst messageList = $input.first().json;\n\nconst normalizePhone = (value) =\u003e String(value || \u0027\u0027).replace(/[^+\\d]/g, \u0027\u0027);\nconst stripHtml = (value) =\u003e String(value || \u0027\u0027).replace(/\u003c[^\u003e]+\u003e/g, \u0027 \u0027).replace(/\\s+/g, \u0027 \u0027).trim();\nconst normalizeSearchText = (value) =\u003e String(value || \u0027\u0027)\n  .normalize(\u0027NFD\u0027)\n  .replace(/[\\u0300-\\u036f]/g, \u0027\u0027)\n  .toLowerCase();\n\nconst contactPayload = messageList.meta?.contact?.payload;\nconst contact = Array.isArray(contactPayload)\n  ? (contactPayload[0] ?? {})\n  : (messageList.meta?.contact ?? {});\n\nconst labels = Array.isArray(messageList.meta?.labels) ? messageList.meta.labels : [];\nconst phoneNumber = normalizePhone(contact.phone_number ?? \u0027\u0027);\nconst allowedPhones = event.config.allowedPhoneNumbers.map(normalizePhone);\nconst allowedLabels = event.config.allowedLabels.map((label) =\u003e label.toLowerCase());\nconst allowedInboxIds = event.config.allowedInboxIds.map((id) =\u003e String(id));\nconst inboxId = String(event.inboxId ?? \u0027\u0027);\n\nconst phoneAllowed = allowedPhones.length \u003e 0 \u0026\u0026 allowedPhones.includes(phoneNumber);\nconst labelAllowed = labels.some((label) =\u003e allowedLabels.includes(String(label).toLowerCase()));\nconst inboxAllowed = allowedInboxIds.length \u003e 0 \u0026\u0026 allowedInboxIds.includes(inboxId);\nconst liveMode = event.config.processingMode === \u0027live\u0027;\n\nconst route = liveMode || phoneAllowed || labelAllowed || inboxAllowed ? \u0027run\u0027 : \u0027skip\u0027;\nconst gateReason = liveMode\n  ? \u0027live_mode\u0027\n  : phoneAllowed\n    ? \u0027phone_allowlist\u0027\n    : labelAllowed\n      ? \u0027label_allowlist\u0027\n      : inboxAllowed\n        ? \u0027inbox_allowlist\u0027\n        : \u0027blocked_in_test_mode\u0027;\n\nconst knowledgeBase = [\n  {\n    topic: \u0027shipping\u0027,\n    keywords: [\u0027ship\u0027, \u0027shipping\u0027, \u0027delivery\u0027],\n    answer: \u0027We offer free shipping on orders over $50. Standard delivery takes 3-5 business days.\u0027\n  },\n  {\n    topic: \u0027returns\u0027,\n    keywords: [\u0027return\u0027, \u0027refund\u0027, \u0027exchange\u0027],\n    answer: \u0027You can return items within 30 days of purchase if they are unused and in their original packaging.\u0027\n  },\n  {\n    topic: \u0027payment\u0027,\n    keywords: [\u0027payment\u0027, \u0027pay\u0027, \u0027card\u0027, \u0027bank transfer\u0027],\n    answer: \u0027We accept Visa, Mastercard, PayPal, and bank transfers.\u0027\n  },\n  {\n    topic: \u0027tracking\u0027,\n    keywords: [\u0027track\u0027, \u0027tracking\u0027, \u0027where is my order\u0027, \u0027where order\u0027],\n    answer: \u0027You can track your order using the tracking number from your shipping confirmation message.\u0027\n  },\n  {\n    topic: \u0027contact\u0027,\n    keywords: [\u0027support\u0027, \u0027human\u0027, \u0027agent\u0027, \u0027contact\u0027],\n    answer: `You can contact our support team at ${event.config.supportEmail}.`\n  }\n];\n\nconst lowerMessage = event.content.toLowerCase();\nconst faqMatches = knowledgeBase\n  .filter((entry) =\u003e entry.keywords.some((keyword) =\u003e lowerMessage.includes(keyword)))\n  .map(({ topic, answer }) =\u003e ({ topic, answer }))\n  .slice(0, 3);\n\nconst stopWords = new Set([\n  \u0027the\u0027, \u0027and\u0027, \u0027for\u0027, \u0027with\u0027, \u0027this\u0027, \u0027that\u0027, \u0027have\u0027, \u0027from\u0027, \u0027what\u0027, \u0027your\u0027, \u0027about\u0027, \u0027please\u0027, \u0027need\u0027, \u0027want\u0027,\n  \u0027know\u0027, \u0027tell\u0027, \u0027price\u0027, \u0027stock\u0027, \u0027order\u0027, \u0027where\u0027, \u0027when\u0027, \u0027does\u0027, \u0027will\u0027, \u0027show\u0027, \u0027much\u0027, \u0027how\u0027, \u0027can\u0027,\n  \u0027you\u0027, \u0027me\u0027, \u0027our\u0027, \u0027get\u0027, \u0027buy\u0027, \u0027make\u0027, \u0027create\u0027, \u0027status\u0027, \u0027hello\u0027, \u0027hi\u0027, \u0027product\u0027, \u0027products\u0027, \u0027item\u0027,\n  \u0027items\u0027, \u0027produto\u0027, \u0027produtos\u0027, \u0027quero\u0027, \u0027preciso\u0027, \u0027gostaria\u0027, \u0027tenho\u0027, \u0027tem\u0027, \u0027uma\u0027, \u0027um\u0027, \u0027para\u0027, \u0027com\u0027\n]);\n\nconst normalizedSearchContent = normalizeSearchText(event.content)\n  .replace(/order\\s*#?\\s*\\d+/gi, \u0027 \u0027)\n  .replace(/[^a-z0-9\\s-]/g, \u0027 \u0027);\n\nconst productSearchTokens = [...new Set(\n  normalizedSearchContent\n    .split(/\\s+/)\n    .filter((word) =\u003e word \u0026\u0026 word.length \u003e 2 \u0026\u0026 !stopWords.has(word))\n)]\n  .sort((left, right) =\u003e right.length - left.length || left.localeCompare(right))\n  .slice(0, 4);\n\nconst productSearchTerm = productSearchTokens.join(\u0027 \u0027);\nconst primaryProductToken = productSearchTokens[0] ?? \u0027\u0027;\n\nconst recentMessages = (Array.isArray(messageList.payload) ? messageList.payload : [])\n  .filter((message) =\u003e !message.private \u0026\u0026 String(message.content || \u0027\u0027).trim())\n  .slice(-event.config.maxConversationMessages)\n  .map((message) =\u003e ({\n    role: message.sender_type === \u0027contact\u0027 || message.message_type === 0 ? \u0027customer\u0027 : \u0027agent\u0027,\n    content: stripHtml(message.content),\n    created_at: message.created_at\n  }));\n\nconst createOrderRequested = /(create|place|buy|purchase).{0,20}order|order.{0,20}(create|place|buy|purchase)/i.test(event.content);\n\nreturn {\n  route,\n  gateReason,\n  accountId: event.accountId,\n  conversationId: event.conversationId,\n  inboxId: event.inboxId,\n  content: event.content,\n  orderLookupId: event.detectedOrderId,\n  productSearchTerm,\n  productSearchTokens,\n  primaryProductToken,\n  createOrderRequested,\n  contactName: contact.name ?? \u0027\u0027,\n  contactPhone: phoneNumber,\n  labels,\n  faqMatches,\n  recentMessages,\n  config: event.config\n};"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -2176,
+                                       336
+                                   ],
+                      "id":  "8fe3d6fa-83ce-4fe0-a690-c629081eab35",
+                      "name":  "Gate Test Contact"
+                  }
+              ],
+    "pinData":  {
+
+                },
+    "connections":  {
+                        "Webhook":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "Normalize Incoming Event",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Normalize Incoming Event":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "Should Inspect Event?",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Should Inspect Event?":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Get Conversation Messages",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Get Conversation Messages":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Gate Test Contact",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Should Run Bot?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Woo Order Lookup",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Woo Order Lookup":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Woo Product Search",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Woo Product Search":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Sort Product Matches",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Build OpenAI Request":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "OpenAI Reply",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "OpenAI Reply":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Prepare Chatwoot Reply",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Prepare Chatwoot Reply":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "node":  "Send Reply to Chatwoot",
+                                                                            "type":  "main",
+                                                                            "index":  0
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Sort Product Matches":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Build OpenAI Request",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Gate Test Contact":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Should Run Bot?",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              }
+                    },
+    "active":  true,
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "versionId":  "1e9cab66-128e-49be-b4ec-3a40a68e4efc",
+    "meta":  {
+                 "templateCredsSetupCompleted":  true,
+                 "instanceId":  "365f57b0e0eac50a41d76dc86a287786968875fd8f0a20f7c48135cf59f09396"
+             },
+    "id":  "GkHu2P3OLyaLJ55W",
+    "tags":  [
+
+             ]
+}
