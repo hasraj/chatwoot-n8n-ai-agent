@@ -698,7 +698,6 @@ const rememberedBillingCity = String(previousConversationMemory.billingCity || r
 const rememberedBillingState = String(previousConversationMemory.billingState || rememberedProfile.billingState || '').trim();
 const rememberedBillingPostcode = String(previousConversationMemory.billingPostcode || rememberedProfile.billingPostcode || '').trim();
 const rememberedInterestTags = Array.isArray(rememberedProfile.interestTags) ? rememberedProfile.interestTags : [];
-const previousProduct = previousDraft.product ?? null;
 '@
 
 $draftBillingBlock = @'
