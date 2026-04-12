@@ -153,17 +153,39 @@ const parseChoiceIndex = (text) => {
 const chooseOptionFromMessage = (options, message) => {
   if (!Array.isArray(options) || options.length === 0) return null;
   const currentText = normalizeText(message);
+  const currentCompact = compactText(message);
   const choiceIndex = parseChoiceIndex(message);
   if (choiceIndex !== null && options[choiceIndex]) return options[choiceIndex];
   const measureTokens = extractMeasureTokens(message);
   const scored = options.map((option) => {
+    const optionTitle = normalizeText(option.title);
+    const optionVariation = normalizeText(option.variation_label);
+    const optionUrl = normalizeText(option.product_url);
     const optionText = normalizeText([option.title, option.variation_label, option.product_url].filter(Boolean).join(' '));
+    const optionCompact = compactText([option.title, option.variation_label].filter(Boolean).join(' '));
+    const titleTokens = optionTitle.split(/\s+/).filter((token) => token && token.length > 2);
     let score = 0;
     if (currentText && currentText.length > 2) {
       if (optionText === currentText) score += 1200;
       if (optionText.includes(currentText)) score += 800;
-      if (normalizeText(option.title) === currentText) score += 1000;
-      if (normalizeText(option.variation_label) === currentText) score += 900;
+      if (currentText.includes(optionText)) score += 950;
+      if (optionTitle === currentText) score += 1000;
+      if (optionVariation === currentText) score += 900;
+      if (optionTitle && currentText.includes(optionTitle)) score += 1000;
+      if (optionVariation && currentText.includes(optionVariation)) score += 850;
+      if (optionUrl && currentText.includes(optionUrl)) score += 900;
+    }
+    if (currentCompact && optionCompact) {
+      if (currentCompact === optionCompact) score += 1200;
+      if (currentCompact.includes(optionCompact)) score += 1000;
+    }
+    let tokenHits = 0;
+    for (const token of titleTokens) {
+      if (currentText.includes(token)) tokenHits += 1;
+    }
+    if (titleTokens.length > 0) {
+      if (tokenHits === titleTokens.length) score += 900;
+      else if (tokenHits >= Math.max(2, Math.ceil(titleTokens.length * 0.6))) score += 550;
     }
     for (const token of measureTokens) {
       if (containsMeasureToken(optionText, token)) score += 700;
@@ -194,7 +216,6 @@ const quantityPatterns = [
 ];
 const staticStore = getStaticStore();
 const orderDrafts = staticStore ? (staticStore.chatwootOrderDrafts = staticStore.chatwootOrderDrafts || {}) : {};
-const createdOrders = staticStore ? (staticStore.chatwootCreatedWooOrders = staticStore.chatwootCreatedWooOrders || {}) : {};
 const conversationMemory = staticStore ? (staticStore.chatwootConversationOrderMemory = staticStore.chatwootConversationOrderMemory || {}) : {};
 const conversationKey = String(supportContext.conversationId || '');
 const previousDraft = conversationKey && orderDrafts[conversationKey] ? orderDrafts[conversationKey] : {};
@@ -238,8 +259,8 @@ const currentMeasureTokens = extractMeasureTokens(currentMessage);
 const orderIntentRegex = /\b(?:create|new|place|buy|purchase|need|want)\b.{0,20}\border\b|\border\b.{0,20}\b(?:create|new|place|buy|purchase|now)\b|\b(?:checkout|pay later|payment link|link to pay|criar pedido|fazer pedido|quero pedir|quero comprar)\b/i;
 const explicitNewOrderRequestRegex = /\b(?:create|new|another|place|buy|purchase|need|want)\b.{0,20}\border\b|\border\b.{0,20}\b(?:create|new|another|place|buy|purchase|now)\b|\b(?:criar pedido|novo pedido|outro pedido)\b/i;
 const productDetailsIntentRegex = /\b(?:detail|details|info|information|about|detalhe|detalhes|informacao|informacoes|sobre)\b/i;
-const confirmRegex = /\b(confirm|confirmed|yes|yeah|yep|ok|okay|proceed|continue|go ahead|do it|create it|sim|confirmo|correct|right|isso)\b/i;
-const hardConfirmRegex = /\b(confirm|confirmed|proceed|continue|go ahead|do it|create it|sim|confirmo|correct|right|isso)\b/i;
+const confirmRegex = /\b(confirm|confirmed|confirmar|yes|yeah|yep|ok|okay|proceed|continue|go ahead|do it|create it|sim|confirmo|correct|right|isso)\b/i;
+const hardConfirmRegex = /\b(confirm|confirmed|confirmar|proceed|continue|go ahead|do it|create it|sim|confirmo|correct|right|isso)\b/i;
 const softConfirmRegex = /\b(yes|yeah|yep|ok|okay)\b/i;
 const agentOrderPromptRegex = /\b(?:criar o pedido|create(?: the)? order|inform(?:e| me) a quantidade|quantity desired|reply "?confirm"?|responda "?confirm(?:ar)?"?|link de pagamento|payment link|escolha(?: uma)? opcao|choose(?: one)? option|billing email|e-mail(?: para faturamento)?|confirmar para eu criar|confirm to create)\b/i;
 const agentOrderPrompted = normalizedRecentAgentMessages.some((message) => agentOrderPromptRegex.test(message));
@@ -459,10 +480,6 @@ if (!orderConversationRequested) {
 }
 
 const now = Date.now();
-for (const [key, value] of Object.entries(createdOrders)) {
-  const timestamp = value?.createdAt ?? value?.created_at ?? value?.timestamp;
-  if (!timestamp || now - Number(timestamp) > 7 * 24 * 60 * 60 * 1000) delete createdOrders[key];
-}
 
 const missingFields = [];
 if (!selectedProduct && variationOptions.length > 0) missingFields.push('variation');
@@ -476,16 +493,10 @@ if (!billingCity) missingFields.push('city');
 if (!billingState) missingFields.push('state');
 if (!billingPostcode) missingFields.push('postcode');
 
-const orderSignature = selectedProduct && billingEmail && Number.isInteger(quantity) && quantity > 0
-  ? [supportContext.conversationId || '', selectedProduct.product_id || '', selectedProduct.variation_id || '0', quantity, billingEmail].join(':')
-  : '';
-const existingOrder = !explicitNewOrderRequest && orderSignature && createdOrders[orderSignature] ? createdOrders[orderSignature] : null;
-
 let orderCreationStatus = 'not_requested';
 const carryForwardReadyState = previousOrderCreationStatus === 'ready_to_create' && previousMissingFields.length === 0;
 if (orderActionRequested) {
   if (!supportContext.config.orderCreationEnabled) orderCreationStatus = 'disabled';
-  else if (existingOrder) orderCreationStatus = 'existing_order';
   else if (missingFields.length > 0) orderCreationStatus = 'needs_info';
   else if (explicitCreateNow || carryForwardReadyState) orderCreationStatus = 'ready_to_create';
   else orderCreationStatus = 'awaiting_confirmation';
@@ -578,8 +589,6 @@ return {
   quantity,
   product: selectedProduct,
   variationOptions,
-  orderSignature,
-  existingOrder,
   orderPayload
 };
 '@
@@ -677,25 +686,41 @@ const buildCartUrl = (wooBaseUrl, product, quantity = 1) => {
   const productId = String(product?.product_id || '').trim();
   if (!baseUrl || !productId) return null;
 
-  const params = new URLSearchParams();
+  const params = [];
+  const setParam = (key, value) => {
+    const finalKey = String(key || '').trim();
+    const finalValue = String(value || '').trim();
+    if (!finalKey || !finalValue) return;
+    const existingIndex = params.findIndex((entry) => entry.key === finalKey);
+    if (existingIndex >= 0) params.splice(existingIndex, 1);
+    params.push({ key: finalKey, value: finalValue });
+  };
   const variationId = String(product?.variation_id || '').trim();
   const requestedQuantity = Number.isFinite(Number(quantity)) && Number(quantity) > 0 ? String(Number(quantity)) : '1';
 
-  if (variationId) params.set('add-to-cart', variationId);
-  else params.set('add-to-cart', productId);
-  params.set('quantity', requestedQuantity);
+  if (variationId) setParam('add-to-cart', variationId);
+  else setParam('add-to-cart', productId);
+  setParam('quantity', requestedQuantity);
 
   const originalUrl = String(product?.product_url || product?.canonical_product_url || '').trim();
   if (originalUrl) {
     try {
-      const parsedUrl = new URL(originalUrl);
-      parsedUrl.searchParams.forEach((value, key) => {
-        if (key.startsWith('attribute_') && value) params.set(key, value);
-      });
+      const queryString = originalUrl.includes('?') ? originalUrl.split('?').slice(1).join('?') : '';
+      for (const part of queryString.split('&')) {
+        const trimmedPart = String(part || '').trim();
+        if (!trimmedPart) continue;
+        const [rawKey, ...rawValueParts] = trimmedPart.split('=');
+        const key = decodeURIComponent(String(rawKey || '').trim());
+        const value = decodeURIComponent(rawValueParts.join('=').trim());
+        if (key.startsWith('attribute_') && value) setParam(key, value);
+      }
     } catch (error) {}
   }
 
-  return `${baseUrl}/?${params.toString()}`;
+  const query = params
+    .map((entry) => `${encodeURIComponent(entry.key)}=${encodeURIComponent(entry.value)}`)
+    .join('&');
+  return query ? `${baseUrl}/?${query}` : null;
 };
 const productSummary = selectedProducts.map((product) => ({
   product_id: product.product_id || '',
@@ -744,7 +769,6 @@ const buildOrderPayUrl = (wooBaseUrl, orderId, orderKey) => {
 };
 
 const staticStore = getStaticStore();
-const createdOrders = staticStore ? (staticStore.chatwootCreatedWooOrders = staticStore.chatwootCreatedWooOrders || {}) : {};
 const orderDrafts = staticStore ? (staticStore.chatwootOrderDrafts = staticStore.chatwootOrderDrafts || {}) : {};
 const conversationKey = String(supportContext.conversationId || '');
 const createOrderReturnedList = Array.isArray(createOrderResponse?.body);
@@ -770,10 +794,6 @@ if (!createOrderReturnedList && createOrderBody?.id && (!createOrderResponse?.st
     createdAt: Date.now()
   };
   orderCreationStatus = 'created';
-  if (orderDraft.orderSignature && staticStore) createdOrders[orderDraft.orderSignature] = createdOrder;
-  if (conversationKey && staticStore) delete orderDrafts[conversationKey];
-} else if (orderDraft.orderCreationStatus === 'existing_order' && orderDraft.existingOrder) {
-  createdOrder = orderDraft.existingOrder;
   if (conversationKey && staticStore) delete orderDrafts[conversationKey];
 } else if ((createOrderResponse?.statusCode && Number(createOrderResponse.statusCode) >= 400) || (orderDraft.orderCreationStatus === 'ready_to_create' && createOrderResponse?.body)) {
   orderCreationStatus = 'create_failed';
@@ -842,7 +862,7 @@ const systemMessage = [
   'If product_search.price_filter.requested is true and product_lookup has matches, list up to 3 matching products with name, price, and product_url.',
   'If product_search.price_filter.requested is true and product_lookup is empty, clearly say that no products were found for that price range.',
   'If cart_link.requested is true and cart_link.best_cart_url is available, include that exact cart URL and also include the product page URL when helpful.',
-  'If order_creation.status is created or existing_order, confirm that the order is ready and include the exact pay_url.',
+  'If order_creation.status is created, confirm that the order is ready and include the exact pay_url.',
   'If order_creation.status is needs_info, ask only for the missing fields.',
   'If the best product has stock_status equal to outofstock, say it exists but is currently out of stock.',
   'When a product lookup has a confirmed best_match_url and the message is not part of order creation, include that exact URL in the reply.',
@@ -953,7 +973,7 @@ const formatMissingFields = (fields) => {
 
 let reply = '';
 if (requestContext.orderActionRequested) {
-  if (requestContext.orderCreationStatus === 'created' || requestContext.orderCreationStatus === 'existing_order') {
+  if (requestContext.orderCreationStatus === 'created') {
     const quantityText = requestContext.orderDraftQuantity ? String(requestContext.orderDraftQuantity) : '1';
     const productTitle = String(requestContext.orderDraftProductTitle || 'the selected product').trim();
     const payUrl = String(requestContext.orderPayUrl || '').trim();
@@ -1121,7 +1141,7 @@ const bestProductName = String(requestContext.bestProductName || '').trim();
 
 let reply = '';
 if (requestContext.orderActionRequested) {
-  if (orderStatus === 'created' || orderStatus === 'existing_order') {
+  if (orderStatus === 'created') {
     reply = isPortuguese
       ? `${greeting} Seu pedido de ${orderQuantity} unidade(s) de ${orderProductTitle} esta pronto. Voce pode concluir o pagamento por este link:\n${orderPayUrl}\n\nE-mail do pedido: ${orderEmail}`
       : `${greeting} Your order for ${orderQuantity} unit(s) of ${orderProductTitle} is ready. You can complete the payment using this link:\n${orderPayUrl}\n\nOrder email: ${orderEmail}`;
