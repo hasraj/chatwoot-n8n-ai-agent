@@ -106,7 +106,7 @@ Ensure-Node -Json $json -Node @{
   position = @(3320, 120)
   parameters = @{
     promptType = 'define'
-    text = '={{ $json.openAiRequest.messages[1].content }}'
+    text = '={{ $json.compactContextText || $json.openAiRequest.messages[1].content }}'
     options = @{
       systemMessage = '={{ $json.openAiRequest.messages[0].content }}'
       maxIterations = 4
@@ -214,4 +214,6 @@ Set-Connection -Connections $json.connections -Name $openAiNodeName -Value @{
 }
 
 $json | ConvertTo-Json -Depth 100 | Set-Content -Path $targetPath -Encoding UTF8
+node 'f:\github\chatwoot n8n ai agent\scripts\fix-escaped-backticks.js' | Out-Null
+node 'f:\github\chatwoot n8n ai agent\scripts\fix-order-review-template-fallback.js' | Out-Null
 Write-Output $targetPath

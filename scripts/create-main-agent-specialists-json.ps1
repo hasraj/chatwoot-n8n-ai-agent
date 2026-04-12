@@ -119,7 +119,7 @@ const userPrompt = [
   '{"support_intent":"","support_outcome":"","handoff_recommended":false,"handoff_reason":"","notes":[]}',
   '',
   'Deterministic context:',
-  requestContext.openAiRequest?.messages?.[1]?.content || ''
+  requestContext.compactContextText || requestContext.openAiRequest?.messages?.[1]?.content || ''
 ].join('\n');
 
 return [{
@@ -147,10 +147,16 @@ const userPrompt = [
   '{"customer_goal":"","best_product_fit":"","recommended_products":[],"cross_sell":[],"notes":[]}',
   '',
   'Deterministic context:',
-  previous.openAiRequest?.messages?.[1]?.content || '',
+  previous.compactContextText || previous.openAiRequest?.messages?.[1]?.content || '',
   '',
   'Support specialist internal JSON:',
-  JSON.stringify(previous.supportSpecialist ?? {})
+  JSON.stringify({
+    support_intent: previous.supportSpecialist?.support_intent || '',
+    support_outcome: previous.supportSpecialist?.support_outcome || '',
+    handoff_recommended: Boolean(previous.supportSpecialist?.handoff_recommended),
+    handoff_reason: previous.supportSpecialist?.handoff_reason || '',
+    notes: Array.isArray(previous.supportSpecialist?.notes) ? previous.supportSpecialist.notes.slice(0, 3) : []
+  })
 ].join('\n');
 
 return [{
@@ -178,10 +184,16 @@ const userPrompt = [
   '{"health_sensitive":false,"safe_to_answer":true,"warning_level":"low","escalate":false,"notes":[]}',
   '',
   'Deterministic context:',
-  previous.openAiRequest?.messages?.[1]?.content || '',
+  previous.compactContextText || previous.openAiRequest?.messages?.[1]?.content || '',
   '',
   'Recommendation specialist internal JSON:',
-  JSON.stringify(previous.recommendationSpecialist ?? {})
+  JSON.stringify({
+    customer_goal: previous.recommendationSpecialist?.customer_goal || '',
+    best_product_fit: previous.recommendationSpecialist?.best_product_fit || '',
+    recommended_products: Array.isArray(previous.recommendationSpecialist?.recommended_products) ? previous.recommendationSpecialist.recommended_products.slice(0, 3) : [],
+    cross_sell: Array.isArray(previous.recommendationSpecialist?.cross_sell) ? previous.recommendationSpecialist.cross_sell.slice(0, 3) : [],
+    notes: Array.isArray(previous.recommendationSpecialist?.notes) ? previous.recommendationSpecialist.notes.slice(0, 3) : []
+  })
 ].join('\n');
 
 return [{
@@ -248,9 +260,24 @@ $buildMainCode = @'
 const previous = $('Wrap Health Safety Output').first().json ?? {};
 
 const specialistBundle = {
-  support_specialist: previous.supportSpecialist ?? {},
-  recommendation_specialist: previous.recommendationSpecialist ?? {},
-  health_safety_specialist: previous.safetySpecialist ?? {}
+  support_specialist: {
+    support_intent: previous.supportSpecialist?.support_intent || '',
+    support_outcome: previous.supportSpecialist?.support_outcome || '',
+    handoff_recommended: Boolean(previous.supportSpecialist?.handoff_recommended),
+    handoff_reason: previous.supportSpecialist?.handoff_reason || ''
+  },
+  recommendation_specialist: {
+    customer_goal: previous.recommendationSpecialist?.customer_goal || '',
+    best_product_fit: previous.recommendationSpecialist?.best_product_fit || '',
+    recommended_products: Array.isArray(previous.recommendationSpecialist?.recommended_products) ? previous.recommendationSpecialist.recommended_products.slice(0, 3) : [],
+    cross_sell: Array.isArray(previous.recommendationSpecialist?.cross_sell) ? previous.recommendationSpecialist.cross_sell.slice(0, 3) : []
+  },
+  health_safety_specialist: {
+    health_sensitive: Boolean(previous.safetySpecialist?.health_sensitive),
+    safe_to_answer: previous.safetySpecialist?.safe_to_answer !== false,
+    warning_level: previous.safetySpecialist?.warning_level || '',
+    escalate: Boolean(previous.safetySpecialist?.escalate)
+  }
 };
 
 const systemPrompt = [
@@ -263,13 +290,16 @@ const systemPrompt = [
   'Use the specialist outputs only as internal reasoning aids to improve the final reply.',
   'If order_creation.status is created, send the exact payment link and do not ask the customer again for the same order.',
   'If order_creation.status is needs_info, ask only for the missing fields and do not repeat fields already provided.',
-  'If order_creation.status is awaiting_confirmation, ask for confirmation clearly once.',
+  'If order_creation.status is awaiting_confirmation, always present one final order review before asking for confirmation.',
+  'That final order review must list the selected products, quantities, subtotal, shipping cost if known, total amount, billing email, and the delivery address.',
+  'If shipping cost is not known yet, say clearly that shipping will be calculated at payment and do not invent a value.',
+  'After the order review, ask for one explicit confirmation only once.',
   'If the health safety specialist says the topic is unsafe or escalation is needed, avoid risky health claims and suggest safe next steps.',
   'Keep the reply concise, clear, and natural for WhatsApp.'
 ].filter(Boolean).join('\n');
 
 const userPrompt = [
-  previous.openAiRequest?.messages?.[1]?.content || '',
+  previous.compactContextText || previous.openAiRequest?.messages?.[1]?.content || '',
   '',
   'Internal specialist outputs JSON:',
   JSON.stringify(specialistBundle)
@@ -629,4 +659,6 @@ Remove-Node -Json $json -Name $openAiNodeName
 Remove-Node -Json $json -Name $replyNodeName
 
 $json | ConvertTo-Json -Depth 100 | Set-Content -Path $targetPath -Encoding UTF8
+node 'f:\github\chatwoot n8n ai agent\scripts\fix-escaped-backticks.js' | Out-Null
+node 'f:\github\chatwoot n8n ai agent\scripts\fix-order-review-template-fallback.js' | Out-Null
 Write-Output $targetPath

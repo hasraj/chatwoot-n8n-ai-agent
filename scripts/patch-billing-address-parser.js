@@ -1,0 +1,180 @@
+const fs = require('fs');
+
+const file = 'f:/github/chatwoot n8n ai agent/chatwoot-ai-product-search-and-order-create-final.json';
+
+function replaceBetweenOrThrow(code, startToken, endToken, replacement, label) {
+  const startIndex = code.indexOf(startToken);
+  if (startIndex < 0) throw new Error(`Start token not found: ${label}`);
+  const endIndex = code.indexOf(endToken, startIndex);
+  if (endIndex < 0) throw new Error(`End token not found: ${label}`);
+  return code.slice(0, startIndex) + replacement + code.slice(endIndex);
+}
+
+const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+const data = JSON.parse(raw);
+const node = data.nodes.find((item) => item.name === 'Prepare Woo Order Draft3');
+if (!node) throw new Error('Prepare Woo Order Draft3 not found');
+
+const replacement = [
+  "const parseCommaAddressParts = (value) => {",
+  "  const empty = { address1: '', number: '', neighborhood: '', city: '', state: '', postcode: '' };",
+  "  const text = stripText(value);",
+  "  if (!text) return empty;",
+  "  const parts = text.split(/\\s*,\\s*/).map((part) => part.trim()).filter(Boolean);",
+  "  if (parts.length === 0) return empty;",
+  "  let working = parts.slice();",
+  "  let postcode = '';",
+  "  const maybePostcode = normalizePostcode(working[working.length - 1] || '');",
+  "  if (maybePostcode) {",
+  "    postcode = maybePostcode;",
+  "    working.pop();",
+  "  }",
+  "  let state = '';",
+  "  const maybeState = parseStateCode(working[working.length - 1] || '');",
+  "  if (maybeState) {",
+  "    state = maybeState;",
+  "    working.pop();",
+  "  }",
+  "  let city = '';",
+  "  if (working.length >= 2) city = working.pop();",
+  "  let neighborhood = '';",
+  "  if (working.length >= 2) neighborhood = working.pop();",
+  "  let number = '';",
+  "  const trailingToken = String(working[working.length - 1] || '').trim();",
+  "  if (working.length >= 2 && /\\d/.test(trailingToken) && /^[A-Za-z0-9\\-\\/]{1,20}$/.test(trailingToken)) {",
+  "    number = trailingToken;",
+  "    working.pop();",
+  "  }",
+  "  const address1 = working.join(', ').trim() || text;",
+  "  return { address1, number, neighborhood, city, state, postcode };",
+  "};",
+  "const extractInlineLabeledAddress = (text) => {",
+  "  const line = extractWithPatterns(text, [",
+  "    /^\\s*(?:billing address|address|delivery address|shipping address|endereco|endere\\u00e7o)\\s*[:=-]\\s*(.+)$/im",
+  "  ]);",
+  "  return line ? parseCommaAddressParts(line) : { address1: '', number: '', neighborhood: '', city: '', state: '', postcode: '' };",
+  "};",
+  "const extractBillingAddress1 = (text) => {",
+  "  const inline = extractInlineLabeledAddress(text);",
+  "  return inline.address1 || extractWithPatterns(text, [",
+  "    /^\\s*((?:rua|avenida|av\\.?|travessa|alameda|estrada|rodovia|praca|pra\\u00e7a)\\b.+)$/im",
+  "  ]);",
+  "};",
+  "const extractBillingNeighborhood = (text) => {",
+  "  const inline = extractInlineLabeledAddress(text);",
+  "  return extractWithPatterns(text, [",
+  "    /^\\s*(?:neighborhood|bairro|district)\\s*[:=-]\\s*(.+)$/im",
+  "  ]) || inline.neighborhood;",
+  "};",
+  "const extractBillingNumber = (text) => {",
+  "  const inline = extractInlineLabeledAddress(text);",
+  "  return inline.number || extractWithPatterns(text, [",
+  "    /^\\s*(?:street\\s*number|house\\s*number|building\\s*number|number|numero|n\\u00famero|billing number)\\s*[:=-]?\\s*([A-Za-z0-9\\-\\/]{1,20})\\s*$/im,",
+  "    /\\b(?:street\\s*number|house\\s*number|building\\s*number|number|numero|n\\u00famero)\\b\\s*[:=-]?\\s*([A-Za-z0-9\\-\\/]{1,20})\\b/i,",
+  "    /\\b(?:and|e)\\s+(?:street\\s*number|house\\s*number|building\\s*number|number|numero|n\\u00famero)\\b\\s*[:=-]?\\s*([A-Za-z0-9\\-\\/]{1,20})\\b/i",
+  "  ]);",
+  "};",
+  "const extractBillingCity = (text) => {",
+  "  const inline = extractInlineLabeledAddress(text);",
+  "  return extractWithPatterns(text, [",
+  "    /^\\s*(?:city|cidade)\\s*[:=-]\\s*([^\\n,]{2,60})$/im",
+  "  ]) || inline.city;",
+  "};",
+  "const extractBillingState = (text) => normalizeState(",
+  "  extractWithPatterns(text, [",
+  "    /^\\s*(?:state|estado|uf)\\s*[:=-]\\s*([A-Za-z\\u00C0-\\u017F ]{2,30})$/im",
+  "  ]) || extractInlineLabeledAddress(text).state",
+  ");",
+  "const extractBillingPostcode = (text) => normalizePostcode(",
+  "  extractWithPatterns(text, [",
+  "    /^\\s*(?:postcode|zip(?:\\s*code)?|cep)\\s*[:=-]\\s*([0-9\\-]{8,10})$/im,",
+  "    /^\\s*([0-9\\-]{8,10})\\s*$/im",
+  "  ]) || extractInlineLabeledAddress(text).postcode",
+  ");",
+].join('\n');
+
+if (node.parameters.jsCode.includes("const extractBillingAddress1 = (text) => extractWithPatterns(text, [")) {
+  node.parameters.jsCode = replaceBetweenOrThrow(
+    node.parameters.jsCode,
+    "const extractBillingAddress1 = (text) => extractWithPatterns(text, [",
+    "const parseMultilineBillingBlock = (text) => {",
+    replacement,
+    'billing parser block'
+  );
+}
+
+const multilineReplacement = [
+  "const parseMultilineBillingBlock = (text) => {",
+  "  const empty = { address1: '', neighborhood: '', city: '', state: '', postcode: '' };",
+  "  let lines = getMeaningfulLines(text);",
+  "  if (lines.length === 0) return empty;",
+  "",
+  "  const normalizedWholeText = normalizeText(text);",
+  "  const headerRegex = /\\b(?:my address(?: is)?|address|billing address|delivery address|shipping address|endereco|endere\\u00e7o)\\b/i;",
+  "  const headerIndex = lines.findIndex((line) => headerRegex.test(normalizeText(line)));",
+  "  const hadHeader = headerIndex >= 0;",
+  "  if (hadHeader) lines = lines.slice(headerIndex + 1);",
+  "",
+  "  lines = lines.filter((line) => {",
+  "    const normalized = normalizeText(line);",
+  "    if (!normalized) return false;",
+  "    if (/^(?:my address(?: is)?|address|billing address|delivery address|shipping address|endereco|endere\\u00e7o)[.:]?$/i.test(normalized)) return false;",
+  "    if (/^(?:cpf|email|numero|number|cidade|city|estado|state|cep|postcode)\\b/i.test(normalized)) return false;",
+  "    return true;",
+  "  });",
+  "",
+  "  if (lines.length === 0) return empty;",
+  "",
+  "  const singleLine = lines.length === 1 ? lines[0] : '';",
+  "  const singleLineParsed = singleLine ? parseCommaAddressParts(singleLine) : empty;",
+  "  const streetLike = singleLine ? /^(?:rua|avenida|av\\.?|travessa|alameda|estrada|rodovia|praca|pra\\u00e7a)\\b/i.test(normalizeText(singleLine)) : false;",
+  "  const singleLineLooksStructured = Boolean(singleLineParsed.address1 && (singleLineParsed.number || singleLineParsed.city || singleLineParsed.state || singleLineParsed.postcode));",
+  "  const confirmLike = /\\b(?:yes|yeah|yep|ok|okay|confirm|confirmed|confirmar|sim|confirmo|correct|all correct|isso|certo)\\b/i.test(normalizedWholeText);",
+  "",
+  "  if (!hadHeader && confirmLike && lines.length <= 2 && !singleLineLooksStructured && !streetLike) return empty;",
+  "  if (!hadHeader && lines.length === 1 && !singleLineLooksStructured && !streetLike) return empty;",
+  "",
+  "  const postcodeIndex = lines.findIndex((line) => Boolean(normalizePostcode(line)));",
+  "  const postcode = postcodeIndex >= 0 ? normalizePostcode(lines[postcodeIndex]) : '';",
+  "  let workingLines = postcodeIndex >= 0 ? lines.slice(0, postcodeIndex) : lines.slice();",
+  "  if (workingLines.length === 0) return { ...empty, postcode };",
+  "",
+  "  let state = '';",
+  "  const maybeStateCode = parseStateCode(workingLines[workingLines.length - 1]);",
+  "  if (maybeStateCode) {",
+  "    state = maybeStateCode;",
+  "    workingLines.pop();",
+  "  }",
+  "",
+  "  let city = '';",
+  "  if (workingLines.length >= 2) {",
+  "    city = workingLines.pop();",
+  "  }",
+  "",
+  "  let neighborhood = '';",
+  "  if (workingLines.length >= 2) {",
+  "    neighborhood = workingLines.pop();",
+  "  }",
+  "",
+  "  const address1 = workingLines.join(', ').trim();",
+  "  if (!address1 && !streetLike && !singleLineLooksStructured) return empty;",
+  "  return {",
+  "    address1,",
+  "    neighborhood,",
+  "    city,",
+  "    state,",
+  "    postcode",
+  "  };",
+  "};",
+].join('\n');
+
+node.parameters.jsCode = replaceBetweenOrThrow(
+  node.parameters.jsCode,
+  "const parseMultilineBillingBlock = (text) => {",
+  "const extractQuantity = (text) => {",
+  multilineReplacement,
+  'multiline billing parser block'
+);
+
+fs.writeFileSync(file, JSON.stringify(data, null, 2));
+console.log('patched billing parser');
