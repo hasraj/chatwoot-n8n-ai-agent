@@ -1,0 +1,771 @@
+{
+  "name": "Chatwoot n8n AI support Agent v13",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-ai-agent",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2700,
+        0
+      ],
+      "id": "8021552f-8e04-446e-b2e1-0545d4c329bd",
+      "name": "Webhook",
+      "webhookId": "f7e96fa9-b2b4-406a-915d-7370d94e1e13"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || item;\nconst trim = v => String(v == null ? '' : v).trim();\n\nconst content     = trim(body.content);\nconst senderType  = (body.sender && body.sender.type) || body.sender_type || (body.conversation && body.conversation.meta && body.conversation.meta.sender && body.conversation.meta.sender.type) || '';\nconst messageType = body.message_type;\nconst isIncoming  = messageType === 'incoming' || messageType === 0 || messageType === '0';\nconst isPrivate   = Boolean(body.private);\n\nconst shouldProcess = body.event === 'message_created'\n  && isIncoming\n  && senderType === 'contact'\n  && !isPrivate\n  && content.length > 0;\n\n// Order ID detection\nconst rxBefore  = /(?:order|pedido|encomenda|n[uú]mero)\\D{0,15}(\\d{4,})\\b/i;\nconst rxAfter   = /\\b(\\d{5,})\\D{0,15}(?:order|pedido|encomenda|status)/i;\nconst rxHash    = content.match(/(?:^|\\s)#(\\d{4,})\\b/);\nconst rxAlone   = content.match(/^\\s*(\\d{5,})\\s*$/);\nconst rxBeforeM = content.match(rxBefore);\nconst rxAfterM  = content.match(rxAfter);\nconst detectedOrderId = (rxBeforeM && rxBeforeM[1])\n  || (rxAfterM && rxAfterM[1])\n  || (rxHash && rxHash[1])\n  || (rxAlone && rxAlone[1])\n  || '';\n\nconst senderEmail = trim((body.sender && body.sender.email) || (body.conversation && body.conversation.meta && body.conversation.meta.sender && body.conversation.meta.sender.email) || '');\nconst senderName  = trim((body.sender && body.sender.name)  || (body.conversation && body.conversation.meta && body.conversation.meta.sender && body.conversation.meta.sender.name)  || '');\nconst senderPhone = trim((body.sender && body.sender.phone_number) || (body.conversation && body.conversation.meta && body.conversation.meta.sender && body.conversation.meta.sender.phone_number) || '');\n\nreturn {\n  route: shouldProcess ? 'process' : 'ignore',\n  event: body.event || '',\n  conversationId: (body.conversation && body.conversation.id) || body.conversation_id || null,\n  accountId: (body.account && body.account.id) || body.account_id || null,\n  inboxId: (body.inbox && body.inbox.id) || body.inbox_id || (body.conversation && body.conversation.inbox_id) || null,\n  content,\n  senderEmail,\n  senderName,\n  senderPhone,\n  detectedOrderId,\n  config: {\n    chatwootBaseUrl: 'https://sac.famivita.com',\n    wooBaseUrl: 'https://www.famivita.com.br',\n    openAiModel: 'gpt-4.1-mini',\n    maxConversationMessages: 24,\n    shippingApiUrl: 'https://www.famivita.com.br/wp-json/custom-shipping/v1/quote-get',\n    defaultItemWeightKg: 0.5\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2440,
+        0
+      ],
+      "id": "2c5b5337-e7e5-438c-9081-144269971c5b",
+      "name": "Normalize Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-process",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "process",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2180,
+        0
+      ],
+      "id": "63c0bf9f-549b-41e3-8ab7-cf62e5844bf6",
+      "name": "Should Process?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Normalize Event').first().json.config.chatwootBaseUrl }}/api/v1/accounts/{{ $('Normalize Event').first().json.accountId }}/conversations/{{ $('Normalize Event').first().json.conversationId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1920,
+        0
+      ],
+      "id": "2cd1f95f-43cc-4a72-b62b-168b10474989",
+      "name": "Get Conversation",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SbmBMJv7nxEADt7f",
+          "name": "chatwoot token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1GCl-6QwyPEYiN41LNUIHZaXeZ6mEpFopYM0cZzfZKsI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "FV_live_product",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1660,
+        0
+      ],
+      "id": "5d0c9d4c-d932-4275-9931-874dff47a6a0",
+      "name": "Get Catalog",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "33OaFvyrcaNWPBsR",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ (() => { const c = $('Normalize Event').first().json; const base = String(c.config.wooBaseUrl||'').replace(/\\/$/, ''); const id = String(c.detectedOrderId||'').trim(); const email = encodeURIComponent(String(c.senderEmail||'').trim()); if (id) return `${base}/wp-json/wc/v3/orders/${id}`; if (email) return `${base}/wp-json/wc/v3/orders?search=${email}&per_page=5&orderby=date&order=desc`; return `${base}/wp-json/wc/v3/orders?per_page=1`; })() }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1400,
+        0
+      ],
+      "id": "0b2ac6f5-cf98-479c-ba2f-051c507b7798",
+      "name": "Maybe Lookup Order",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Z9VqzrucTtbl9lZu",
+          "name": "FV store connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Normalize Event').first().json;\nconst convo = $('Get Conversation').first().json || {};\nconst orderResp = $('Maybe Lookup Order').first().json || {};\nconst order = orderResp.body || orderResp;\nconst catalogRaw = $('Get Catalog').all().map(x => x.json).filter(Boolean);\n\nconst stripHtml = v => String(v || '').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();\nconst norm = s => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();\n\n// ── Catalog enrichment ──\nconst wooBase = ctx.config.wooBaseUrl;\nconst getCol = (row, ...cands) => {\n  for (const c of cands) if (row[c] !== undefined && row[c] !== null) return row[c];\n  const keys = Object.keys(row);\n  for (const c of cands) {\n    const want = String(c).trim().toLowerCase().replace(/[\\s_-]+/g,'');\n    const k = keys.find(k => String(k).trim().toLowerCase().replace(/[\\s_-]+/g,'') === want);\n    if (k && row[k] !== undefined && row[k] !== null) return row[k];\n  }\n  return '';\n};\nconst pickPrice = r => String(getCol(r,'price','sale_price','regular_price') || '').trim();\n\nconst catalogEnriched = catalogRaw.map(r => {\n  const productId   = Number(getCol(r,'product_id','id') || 0) || null;\n  const variationId = Number(getCol(r,'variation_id','var_id') || 0) || null;\n  const cartId      = variationId || productId;\n  const title       = String(getCol(r,'custom_title','product_title','title','name') || '').trim();\n  const altName     = String(getCol(r,'custom_text') || '').trim();\n  const extraText   = [getCol(r,'custom_text1'), getCol(r,'custom_text2')].map(v => stripHtml(v||'')).filter(Boolean).join(' ').slice(0,300);\n  const stockStatus = String(getCol(r,'stock_status') || '').trim().toLowerCase();\n  const isOos = stockStatus === 'outofstock' || stockStatus === 'out_of_stock' || stockStatus === 'out-of-stock';\n  const isBackorder = stockStatus === 'onbackorder' || stockStatus === 'on_backorder' || stockStatus === 'on-backorder';\n  const titleSuffix = isOos ? ' ❌ ESGOTADO' : (isBackorder ? ' ⏳ Pré-venda' : '');\n  const stockLine   = stockStatus ? ('Estoque: ' + stockStatus) : '';\n  const addToCart   = (isOos || !cartId) ? '' : (wooBase + '/carrinho-de-compras/?add-to-cart=' + cartId);\n  return {\n    product_id: productId,\n    variation_id: variationId,\n    title,\n    alt_name: altName,\n    sku: String(getCol(r,'product_sku','sku') || '').trim(),\n    url: String(getCol(r,'product_url','url') || '').trim(),\n    add_to_cart: addToCart,\n    price: pickPrice(r),\n    short: extraText,\n    tags: String(getCol(r,'product_tags','tags') || '').trim(),\n    manufacturer: String(getCol(r,'product_manufacturer','manufacturer') || '').trim(),\n    weight_kg: Number(getCol(r,'weight_kg','weight') || ctx.config.defaultItemWeightKg) || ctx.config.defaultItemWeightKg,\n    status: String(getCol(r,'status') || '').trim().toLowerCase(),\n    stock_status: stockStatus,\n    title_suffix: titleSuffix,\n    stock_line: stockLine\n  };\n});\n\nconst catalogAll = catalogEnriched\n  .filter(p => p.title || p.alt_name)\n  .filter(p => !p.status || p.status === 'publish');\n\n// ── Conversation history (oldest → newest) ──\nconst rawMsgs = Array.isArray(convo.payload) ? convo.payload\n  : (Array.isArray(convo.data && convo.data.payload) ? convo.data.payload\n  : (Array.isArray(convo) ? convo : []));\nconst sorted = rawMsgs\n  .filter(m => !m.private && m.message_type !== 'activity' && m.message_type !== 2)\n  .sort((a,b) => (a.created_at||0) - (b.created_at||0))\n  .slice(-ctx.config.maxConversationMessages);\nconst history = sorted.map(m => {\n  const role = (m.message_type === 'incoming' || m.message_type === 0) ? 'user' : 'assistant';\n  return { role, content: stripHtml(m.content || '') };\n}).filter(m => m.content);\n\n// ── Detect price filter from latest user message ──\nconst lastUserMsg = ((history.filter(m => m.role === 'user').slice(-1)[0]) || { content: '' }).content;\nconst detectPriceFilter = (msgRaw) => {\n  const t = norm(msgRaw);\n  const num = g => Number.parseFloat(String(g).replace(/\\./g,'').replace(',', '.')) || 0;\n  let m = t.match(/(?:entre|between)\\s+r?\\$?\\s*(\\d+(?:[.,]\\d+)?)\\s+(?:e|and|to|ate)\\s+r?\\$?\\s*(\\d+(?:[.,]\\d+)?)/);\n  if (m) return { type: 'range', min: num(m[1]), max: num(m[2]) };\n  m = t.match(/(?:abaixo de|menos de|ate|no maximo|max(?:imo)?(?: de)?|below|less than|under|cheaper than|no more than|maximo)\\s+r?\\$?\\s*(\\d+(?:[.,]\\d+)?)/);\n  if (m) return { type: 'max', value: num(m[1]) };\n  m = t.match(/(?:acima de|mais de|maior que|above|more than|over|at least|pelo menos)\\s+r?\\$?\\s*(\\d+(?:[.,]\\d+)?)/);\n  if (m) return { type: 'min', value: num(m[1]) };\n  return null;\n};\nconst parsePrice = v => {\n  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;\n  const s = String(v||'').replace(/[^0-9,.\\-]/g,'').trim();\n  if (!s) return 0;\n  const cleaned = s.includes(',') && s.includes('.') ? s.replace(/\\./g,'').replace(',', '.') : s.replace(',', '.');\n  const n = Number.parseFloat(cleaned);\n  return Number.isFinite(n) ? n : 0;\n};\nconst priceFilter = detectPriceFilter(lastUserMsg);\nlet priceFilteredCatalog = catalogAll;\nif (priceFilter) {\n  priceFilteredCatalog = catalogAll.filter(p => {\n    const price = parsePrice(p.price);\n    if (price <= 0) return false;\n    if (priceFilter.type === 'max')   return price <= priceFilter.value;\n    if (priceFilter.type === 'min')   return price >= priceFilter.value;\n    if (priceFilter.type === 'range') return price >= priceFilter.min && price <= priceFilter.max;\n    return true;\n  });\n  if (priceFilter.type === 'max') priceFilteredCatalog.sort((a,b) => parsePrice(a.price) - parsePrice(b.price));\n  else if (priceFilter.type === 'min') priceFilteredCatalog.sort((a,b) => parsePrice(b.price) - parsePrice(a.price));\n}\n\n// ── Keyword ranking ──\nconst STOPWORDS = new Set(['the','and','for','com','para','que','meu','minha','seu','sua','sobre','quero','preciso','send','tell','show','give','need','want','have','this','that','here','there','please','olá','ola','oi','bom','boa','dia','tarde','noite','obrigado','obrigada','por','favor','são','sao','não','nao','sim','também','tambem','muito','mais','menos','tudo','nada','product','products','produto','produtos','detail','details','detalhe','detalhes','gostaria','poderia','sabe','dizer','onde','quanto','como','qual','quais']);\nconst tokens = norm(lastUserMsg).split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOPWORDS.has(w));\nconst scoreRow = row => {\n  if (tokens.length === 0) return 0;\n  const titleHay = norm([row.title, row.alt_name].join(' '));\n  const otherHay = norm([row.short, row.tags, row.manufacturer, row.sku, row.url].join(' '));\n  let s = 0;\n  for (const t of tokens) {\n    if (titleHay.includes(t)) s += 3;\n    else if (otherHay.includes(t)) s += 1;\n  }\n  return s;\n};\nlet scored = priceFilteredCatalog.map(r => ({ row: r, score: scoreRow(r) }));\nscored.sort((a,b) => b.score - a.score);\nconst VISIBLE_LIMIT = 100;\nlet catalog = scored.slice(0, VISIBLE_LIMIT).map(s => s.row);\n\n// ── Fallback: if price filter eliminated everything, show closest options ──\n// Without this, the AI gets an empty catalog and may return empty reply.\nlet priceFilterEmptied = false;\nif (catalog.length === 0 && catalogAll.length > 0) {\n  priceFilterEmptied = Boolean(priceFilter);\n  const fallback = catalogAll.slice().sort((a,b) => parsePrice(a.price) - parsePrice(b.price));\n  catalog = fallback.slice(0, 30);\n}\n\n// ── Fallback: if keyword scoring and the user clearly meant a search,\n//    keep the top-priced items so the AI has options to suggest ──\nif (catalog.length === 0 && catalogAll.length > 0) {\n  catalog = catalogAll.slice(0, 30);\n}\n\n// ── Detect active order item from prior assistant messages ──\nlet activeOrderItem = null;\nconst recentAssistant = history.filter(m => m.role === 'assistant').slice(-4);\nfor (let i = recentAssistant.length - 1; i >= 0; i--) {\n  const msg = recentAssistant[i].content || '';\n  const safeIds = [];\n  let mm; const rx = /add-to-cart=(\\d+)/g;\n  while ((mm = rx.exec(msg)) !== null) safeIds.push(Number(mm[1]));\n  if (safeIds.length === 1) {\n    const id = safeIds[0];\n    const cat = catalogAll.find(p => Number(p.variation_id) === id || Number(p.product_id) === id);\n    if (cat) {\n      activeOrderItem = { product_id: cat.product_id, variation_id: cat.variation_id, title: cat.title, price: cat.price, stock_status: cat.stock_status };\n      break;\n    }\n  } else if (safeIds.length > 1) {\n    break; // ambiguous — let the AI decide based on user's selection\n  }\n}\n\n// ── User picked an explicit option number (1, 2, 3...) ──\n// If the prior assistant message numbered options, pull the chosen ID.\nconst lastUserMsgRaw = lastUserMsg.toLowerCase().trim();\nconst optionMatch = lastUserMsgRaw.match(/^(?:op[cç][aã]o\\s*)?(?:n[uú]?mero\\s*)?(\\d{1,2})\\b/) || lastUserMsgRaw.match(/\\bop[cç][aã]o\\s*(\\d{1,2})\\b/);\nif (optionMatch && recentAssistant.length > 0) {\n  const idx = Number(optionMatch[1]) - 1;\n  const lastAssist = recentAssistant[recentAssistant.length - 1].content || '';\n  const ids = [];\n  let mm; const rx = /add-to-cart=(\\d+)/g;\n  while ((mm = rx.exec(lastAssist)) !== null) ids.push(Number(mm[1]));\n  if (idx >= 0 && idx < ids.length) {\n    const cat = catalogAll.find(p => Number(p.variation_id) === ids[idx] || Number(p.product_id) === ids[idx]);\n    if (cat) activeOrderItem = { product_id: cat.product_id, variation_id: cat.variation_id, title: cat.title, price: cat.price, stock_status: cat.stock_status };\n  }\n}\n\n// ── Variation attribute override ──\n// If the customer's recent message specifies an attribute (60g, 168 cápsulas,\n// 12 semanas, etc.) that doesn't match the current AOI's title, switch AOI to\n// the matching variation in the same product family.\n{\n  const ATTR_RX = /\\b(\\d+\\s*(?:g|ml|mg|kg|l|c[aá]psulas?|cap|comprimidos?|sach[eê]s?|tiras?|semanas?|meses?|unidades?|pares?|aplicadores?))\\b/gi;\n  const recentUserMsgs = history.filter(m => m.role === 'user').slice(-3);\n  let userAttrs = [];\n  for (let i = recentUserMsgs.length - 1; i >= 0; i--) {\n    const msg = recentUserMsgs[i].content || '';\n    const matches = [];\n    let am;\n    ATTR_RX.lastIndex = 0;\n    while ((am = ATTR_RX.exec(msg.toLowerCase())) !== null) {\n      matches.push(am[1].replace(/\\s+/g, '').toLowerCase());\n    }\n    if (matches.length > 0) { userAttrs = matches; break; }\n  }\n  if (userAttrs.length > 0) {\n    const titleHasAll = (cat, attrs) => {\n      const t = norm(cat.title).replace(/\\s+/g, '');\n      return attrs.every(a => t.includes(a));\n    };\n    const aoiOk = activeOrderItem && titleHasAll(activeOrderItem, userAttrs);\n    if (!aoiOk) {\n      let candidates = activeOrderItem\n        ? catalogAll.filter(p => Number(p.product_id) === Number(activeOrderItem.product_id))\n        : catalogAll;\n      let better = candidates.find(p => titleHasAll(p, userAttrs));\n      if (!better && activeOrderItem) better = catalogAll.find(p => titleHasAll(p, userAttrs));\n      if (better) {\n        activeOrderItem = {\n          product_id: better.product_id,\n          variation_id: better.variation_id,\n          title: better.title,\n          price: better.price,\n          stock_status: better.stock_status\n        };\n      }\n    }\n  }\n}\n\n// ── Identity keys for workflow memory + ORDER_INFO ownership filter ──\nconst ownerEmail = String(ctx.senderEmail || '').trim().toLowerCase();\nconst ownerPhoneDigits = String(ctx.senderPhone || '').replace(/\\D/g, '');\nconst ownerPhoneTail = ownerPhoneDigits.slice(-10);\nconst memoryKey = (ownerPhoneTail && ownerPhoneTail.length >= 8)\n  ? ('p:' + ownerPhoneTail)\n  : (ownerEmail ? ('e:' + ownerEmail) : '');\n\n// ── Read previousBilling from workflow memory (static data) ──\n// Saved by Build Order Confirmation after a successful order. Persists across\n// executions inside this workflow's settings JSON.\nlet previousBilling = null;\ntry {\n  const staticData = $getWorkflowStaticData('global');\n  const memory = staticData.billingMemory || {};\n  if (memoryKey && memory[memoryKey]) {\n    const saved = memory[memoryKey];\n    if (saved && saved.billing_postcode && saved.billing_address_1 && saved.billing_city) {\n      previousBilling = saved;\n    }\n  }\n} catch (e) { /* static data unavailable — fall through with null */ }\n\n// ── Order context (status questions only — filtered to current contact) ──\nconst isOwnerOrder = (o) => {\n  if (!o || !o.billing) return false;\n  const e = String(o.billing.email || '').trim().toLowerCase();\n  if (ownerEmail && e && e === ownerEmail) return true;\n  if (ownerPhoneTail && ownerPhoneTail.length >= 8) {\n    const p = String(o.billing.phone || '').replace(/\\D/g, '').slice(-10);\n    if (p && p === ownerPhoneTail) return true;\n  }\n  return false;\n};\nlet orderInfo = null;\nif (Array.isArray(order)) {\n  const ownOrders = order.filter(isOwnerOrder);\n  if (ownOrders.length > 0) {\n    orderInfo = { kind: 'list', orders: ownOrders.slice(0,5).map(o => ({\n      id: o.id, status: o.status, total: o.total, date: o.date_created,\n      pay_url: o.payment_url || '', items: (o.line_items||[]).map(i => i.name)\n    })) };\n  }\n} else if (order && order.id && isOwnerOrder(order)) {\n  orderInfo = { kind: 'single', order: {\n    id: order.id, status: order.status, total: order.total,\n    date: order.date_created, pay_url: order.payment_url || '',\n    items: (order.line_items||[]).map(i => ({ name: i.name, qty: i.quantity, total: i.total })),\n    shipping_total: order.shipping_total, billing_email: (order.billing && order.billing.email)\n  }};\n}\n\n// ── System prompt ──\nconst systemMessage = [\n  'Você é uma atendente humana brasileira via WhatsApp para a Famivita (famivita.com.br), loja de bem-estar feminino.',\n  'Fale natural, calorosa, em PT-BR. Use mensagens curtas (2-4 frases) e emojis com moderação. NUNCA diga que é IA, robô ou bot.',\n  '',\n  '═══════════ REGRAS CRÍTICAS ═══════════',\n  '1. SEMPRE leia o histórico completo antes de responder. Nunca repita perguntas já respondidas.',\n  '2. Saída SEMPRE em JSON estrito. Nada de texto fora do JSON.',\n  '3. NUNCA invente nomes, IDs, preços ou URLs de produto. Use APENAS os valores do CATÁLOGO abaixo.',\n  '4. NUNCA construa nem modifique URLs. Copie os campos url e add_to_cart letra por letra.',\n  '5. SEMPRE escreva algo no campo \"reply\" — NUNCA retorne reply vazio. Mesmo se o CATÁLOGO estiver vazio (filtro de preço sem resultados, busca sem match), escreva uma frase explicando isso. Ex.: \"Hmm, não encontrei produtos com esse preço. Quer ver as opções mais em conta?\" ou \"Não consegui localizar esse produto. Pode me dizer o nome de outra forma?\".',\n  '',\n  '═══════════ MOSTRAR PRODUTOS ═══════════',\n  'Para mostrar produtos você DEVE fazer EXATAMENTE assim:',\n  '  1. Inclua a chave \"show_products\" no JSON: array de variation_id (ou product_id quando não houver variação) extraídos do CATÁLOGO.',\n  '  2. Coloque o token literal {PRODUCTS} dentro do campo \"reply\", no ponto onde os produtos devem aparecer.',\n  '  3. NÃO escreva nomes, preços, links ou status de estoque dos produtos no \"reply\" — o sistema renderiza tudo automaticamente, numerado 1., 2., 3....',\n  '  4. ⚠️ LIMITE DE 6 PRODUTOS por mensagem. WhatsApp tem limite de 4096 caracteres por mensagem; mais que 6 produtos faz a mensagem ser rejeitada e o cliente NÃO vê nada. Se houver muitas opções relevantes, escolha as 6 melhores e mencione \"tenho mais opções, é só pedir\".',\n  '',\n  '🛑 ABSOLUTO — NUNCA ESCREVA ENDEREÇO INLINE NO REPLY:',\n  '  NUNCA escreva o endereço do cliente numa linha só do tipo \"Rua X, nº 1, Bairro, Cidade/UF, CEP 00000-000\" dentro do reply. SEMPRE que precisar mostrar o endereço, vá direto para action_after=\"calculate_shipping\" — o sistema gera o resumo completo (Itens, Entrega com cada campo em linha separada Email/CEP/Endereço/Número/Bairro/Cidade/Estado/CPF/Telefone, Frete, Total) automaticamente.',\n\n  '🛑 ABSOLUTO — TROCA DE PRODUTO DURANTE FLUXO DE PEDIDO:',\n  '  Se o cliente já viu um preview e disser \"trocar produto\", \"mudar para X\", \"i need Y now\", \"preciso de Z\", etc., trate como nova intenção de pedido. Ponha items=[novo_produto] e action_after=\"calculate_shipping\". NÃO pergunte \"posso confirmar o endereço?\" — só rode calculate_shipping com o novo produto + os mesmos billing_* da PREVIOUS_BILLING. O cliente vê o preview novo (com novo produto, novo frete) e confirma a partir dele.',\n\n  '🛑 ABSOLUTO — NUNCA ESCREVA O RODAPÉ DE PEDIDO:',\n  '  O sistema adiciona automaticamente, abaixo dos produtos, um rodapé com:',\n  '    \"💬 Quer pedir por aqui mesmo pelo WhatsApp? Me diga a opção 1, 2, 3... e envie seus dados de cobrança no formato: Email, CEP, Endereço...\"',\n  '  VOCÊ NÃO DEVE escrever esse rodapé, nem qualquer variação dele (\"Quer pedir...\", \"Me diga a opção 1, 2\", \"envie seus dados de cobrança\", o template \"Email: ... CEP: ... Endereço: ...\"). O sistema cuida disso. Se você escrever, o cliente verá em duplicado.',\n  '  Termine seu \"reply\" logo após o token {PRODUCTS}, sem instrução adicional sobre como pedir.',\n  '',\n  'Quando o cliente NÃO está pedindo para ver produtos (ex.: já está mandando dados de cobrança, confirmando pedido, perguntando sobre status), use show_products = [] e NÃO inclua {PRODUCTS}.',\n  '',\n  'VARIAÇÕES: o catálogo tem uma linha por variação (cada uma com seu variation_id e add_to_cart). Mostre cada variação como item próprio. Se o cliente especificar atributo (\"60g\", \"168 cápsulas\"), encontre a linha cujo título contenha família + atributo. Quando em dúvida, pergunte qual variação ele quer.',\n  '',\n  'ESTOQUE: para LISTAGEM, inclua produtos de TODOS os status (instock/outofstock/onbackorder) — o sistema marca cada um corretamente. Para PEDIDO, NUNCA inclua produto outofstock em items[].',\n  '',\n  '═══════════ FLUXO DE PEDIDO VIA WHATSAPP ═══════════',\n  'STAGE 0 — VERIFICAÇÃO DE ESTOQUE:',\n  '  Antes de qualquer outra coisa quando o cliente quer pedir um produto: olhe stock_status no CATÁLOGO.',\n  '  Se outofstock → recuse o pedido e ofereça similares em estoque. action_after = \"none\".',\n  '  Se instock → siga para STAGE 1.',\n  '',\n  'STAGE 1 — DADOS DE COBRANÇA:',\n  '  Campos necessários (8): email, cpf, postcode (CEP), address_1 (rua), number, neighborhood (bairro), city, state (UF). Nome e telefone vêm do CUSTOMER_PROFILE.',\n  '  ',\n  '  ⭐ Se PREVIOUS_BILLING (mais abaixo) NÃO for null:',\n  '    O cliente já tem endereço cadastrado. NÃO peça os dados de novo, e NÃO pergunte \"Posso confirmar o endereço?\" antes do preview.',\n  '    🚀 Quando o cliente expressa intenção de pedido (\"want to order X\", \"quero pedir Y\", \"fazer o pedido\"), vá DIRETO para action_after=\"calculate_shipping\" com items=[{product_id, variation_id, quantity}] e todos os billing_* preenchidos com PREVIOUS_BILLING. O sistema vai gerar o resumo completo com itens, endereço, frete e total — o cliente confirma a partir desse resumo.',\n  '    Se o cliente quiser alterar APENAS um ou poucos campos antes de pedir, peça SOMENTE esses campos.',\n  '    Se o cliente quiser trocar todo o endereço, peça os 8 campos.',\n  '  ',\n  '  Se PREVIOUS_BILLING for null:',\n  '    Cliente novo — peça os 8 campos em uma única mensagem curta. action_after = \"none\".',\n  '',\n  'STAGE 2 — PRÉ-VISUALIZAÇÃO COM FRETE:',\n  '  Quando todos os campos estiverem preenchidos E o produto escolhido for in-stock:',\n  '  action_after = \"calculate_shipping\"',\n  '  action_data com items=[{product_id, variation_id, quantity}] e billing_*.',\n  '  reply = string curta tipo \"Um instante, calculando o frete...\". O sistema substitui pelo preview formatado.',\n  '',\n  'STAGE 3 — CONFIRMAÇÃO:',\n  '  Cliente confirma com \"sim\", \"confirmo\", \"pode fechar\":',\n  '  action_after = \"create_order\"',\n  '  action_data com todos os billing_*, items[], shipping_method, shipping_cost.',\n  '  reply curto tipo \"Ótimo, gerando seu pedido...\". O sistema anexa o link de pagamento.',\n  '',\n  '⚠️ PROTOCOLO DE PRÉ-VISUALIZAÇÃO (CRÍTICO):',\n  '  Sempre que QUALQUER campo de cobrança/endereço mudar APÓS uma pré-visualização já mostrada (cliente trocou CEP, endereço, número, bairro, cidade, estado, etc.), você DEVE rodar calculate_shipping novamente ANTES de aceitar create_order.',\n  '  NUNCA pule de \"mudei meu CEP\" direto para create_order — o frete e o total mudam quando o CEP muda, e o cliente precisa ver o novo resumo antes de confirmar.',\n  '  Fluxo correto: cliente muda CEP → você roda calculate_shipping (novo preview com novo frete) → cliente confirma → você roda create_order.',\n  '',\n  '═══════════ STATUS DE PEDIDO ═══════════',\n  'Se o cliente perguntar sobre pedido existente, use ORDER_INFO. Traduza status:',\n  '  pending → Aguardando pagamento (NÃO concluído)',\n  '  processing → Em processamento (pagamento confirmado)',\n  '  on-hold → Em espera   |   completed → Concluído / entregue',\n  '  cancelled → Cancelado |   refunded → Reembolsado |   failed → Falhou',\n  'Inclua pay_url quando status for pending ou on-hold.',\n  'Se ORDER_INFO for null, peça o número do pedido ou o e-mail cadastrado.',\n  '',\n  '═══════════ ESQUEMA JSON DE SAÍDA ═══════════',\n  '{',\n  '  \"reply\": \"string em PT-BR; use {PRODUCTS} onde os produtos devem aparecer\",',\n  '  \"show_products\": [594247, 1044937],',\n  '  \"action_after\": \"none\" | \"calculate_shipping\" | \"create_order\",',\n  '  \"action_data\": {',\n  '    \"items\": [{ \"product_id\": 12345, \"variation_id\": 58, \"quantity\": 1 }],',\n  '    \"billing_name\": \"...\",',\n  '    \"billing_email\": \"...\",',\n  '    \"billing_cpf\": \"...\",',\n  '    \"billing_phone\": \"...\",',\n  '    \"billing_postcode\": \"...\",',\n  '    \"billing_address_1\": \"...\",',\n  '    \"billing_number\": \"...\",',\n  '    \"billing_neighborhood\": \"...\",',\n  '    \"billing_city\": \"...\",',\n  '    \"billing_state\": \"...\",',\n  '    \"shipping_method\": \"PAC\",',\n  '    \"shipping_cost\": 0',\n  '  }',\n  '}',\n  'Use action_data = {} e show_products = [] quando não aplicável.',\n  '',\n  '═══════════ ITEM ATIVO DETECTADO ═══════════',\n  activeOrderItem ? JSON.stringify(activeOrderItem) : 'null',\n  '',\n  '═══════════ CATÁLOGO (' + catalog.length + ' produtos) ═══════════',\n  priceFilterEmptied\n    ? '(NENHUM produto se encaixa exatamente no filtro de preço pedido. O CATÁLOGO abaixo mostra as opções MAIS PRÓXIMAS em estoque. Ao responder, deixe claro que não achou produtos exatamente naquela faixa e ofereça as alternativas mais em conta.)'\n    : '',\n  JSON.stringify(catalog),\n  '',\n  '═══════════ ORDER_INFO ═══════════',\n  orderInfo ? JSON.stringify(orderInfo) : 'null',\n  '',\n  '═══════════ PREVIOUS_BILLING ═══════════',\n  '(Endereço e dados salvos do pedido anterior do cliente. Use como PADRÃO — não peça os dados de novo.)',\n  '(Se o cliente quiser alterar algum campo, ele dirá explicitamente; troque APENAS aquele campo.)',\n  '(Se PREVIOUS_BILLING for null, peça os 8 campos via Stage 1 normalmente.)',\n  previousBilling ? JSON.stringify(previousBilling) : 'null',\n  '',\n  '═══════════ CUSTOMER_PROFILE ═══════════',\n  JSON.stringify({ name: ctx.senderName, email: ctx.senderEmail, phone: ctx.senderPhone })\n].join('\\n');\n\nconst messages = [{ role: 'system', content: systemMessage }].concat(history);\n\nreturn {\n  accountId: ctx.accountId,\n  conversationId: ctx.conversationId,\n  chatwootBaseUrl: ctx.config.chatwootBaseUrl,\n  wooBaseUrl: ctx.config.wooBaseUrl,\n  shippingApiUrl: ctx.config.shippingApiUrl,\n  defaultItemWeightKg: ctx.config.defaultItemWeightKg,\n  senderName: ctx.senderName,\n  senderEmail: ctx.senderEmail,\n  senderPhone: ctx.senderPhone,\n  activeOrderItem,\n  previousBilling,\n  catalog,\n  openAiRequest: {\n    model: ctx.config.openAiModel,\n    temperature: 0.3,\n    max_tokens: 1500,\n    response_format: { type: 'json_object' },\n    messages\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1140,
+        0
+      ],
+      "id": "e5612e6a-5a5c-4807-bcd2-fdc36e04257d",
+      "name": "Build AI Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.openAiRequest }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        0
+      ],
+      "id": "54fc6f79-0b9d-4a4c-ac65-1dc0b0c8c9f3",
+      "name": "OpenAI Reply",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "oa8lM6ASGY5Ot8g8",
+          "name": "Chatwoot open ai token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Build AI Request').first().json;\nconst aiResp = $input.first().json || {};\nconst aiBody = aiResp.body || aiResp;\nconst raw = (aiBody && aiBody.choices && aiBody.choices[0] && aiBody.choices[0].message && aiBody.choices[0].message.content) || '';\n\nlet parsed = { reply: '', action_after: 'none', action_data: {}, show_products: [] };\ntry { parsed = JSON.parse(raw); } catch (e) {\n  parsed = { reply: String(raw).trim() || 'Olá! Como posso ajudar?', action_after: 'none', action_data: {}, show_products: [] };\n}\n\nlet reply = String(parsed.reply || '').trim();\nconst intendedAction = String(parsed.action_after || 'none').toLowerCase();\nconst data = parsed.action_data || {};\n\n// ── Render product blocks (numbered, deterministic) ──\n// Cap at 6 — WhatsApp text-message hard limit is 4096 chars. Each product\n// block is ~250-300 chars. Beyond 6 products + footer, the message gets\n// rejected by WhatsApp and the customer sees nothing.\nconst MAX_PRODUCTS_PER_TURN = 6;\nconst showIdsRaw = Array.isArray(parsed.show_products) ? parsed.show_products : [];\nconst showIds = showIdsRaw.slice(0, MAX_PRODUCTS_PER_TURN);\nconst showIdsTruncated = showIdsRaw.length > MAX_PRODUCTS_PER_TURN;\nconst renderBlock = (cat, idx) => {\n  if (!cat) return null;\n  const lines = [];\n  const priceText = cat.price ? ('R$ ' + String(cat.price).replace('.', ',')) : '';\n  lines.push('*' + (idx+1) + '. ' + cat.title + '*' + (priceText ? ' — ' + priceText : '') + (cat.title_suffix || ''));\n  if (cat.stock_line) lines.push(cat.stock_line);\n  if (cat.url) lines.push('Saiba mais: ' + cat.url);\n  if (cat.add_to_cart) lines.push('Comprar agora: ' + cat.add_to_cart);\n  return lines.join('\\n');\n};\nlet productsRendered = 0;\nif (showIds.length > 0) {\n  const blocks = showIds.map((id, i) => {\n    const cat = (ctx.catalog || []).find(p => Number(p.variation_id) === Number(id) || Number(p.product_id) === Number(id));\n    return renderBlock(cat, i);\n  }).filter(Boolean);\n  productsRendered = blocks.length;\n  let productsText = blocks.join('\\n\\n');\n  if (showIdsTruncated) {\n    productsText += '\\n\\n_(Tenho mais opções — me diga \"ver mais\" se quiser ver outras.)_';\n  }\n  reply = reply.indexOf('{PRODUCTS}') !== -1\n    ? reply.split('{PRODUCTS}').join(productsText)\n    : (productsText ? (reply + (reply ? '\\n\\n' : '') + productsText) : reply);\n}\n\n// ── Strip any AI-written variant of our order-via-whatsapp footer ──\n// The AI sometimes copies the footer text into its own reply, which then\n// duplicates with the system-appended footer. Remove anything from the first\n// 'Quer pedir por aqui' marker to end-of-reply.\n{\n  const stripPatterns = [\n    /\\s*[^\\n]*?💬\\s*\\*?\\s*Quer pedir por aqui mesmo[\\s\\S]*$/i,\n    /\\n[^\\n]*Quer pedir por aqui mesmo[\\s\\S]*$/i,\n    /\\s+Me diga a \\*?op[cç][aã]o\\s*1\\s*,\\s*2[\\s\\S]*$/i,\n    /\\n\\s*Email:\\s*seu@email\\.com[\\s\\S]*$/i\n  ];\n  for (const rx of stripPatterns) reply = reply.replace(rx, '');\n  reply = reply.replace(/\\s+$/, '');\n}\n\n// ── Append the order-via-whatsapp footer ONLY for multi-product search lists ──\n// Single-product cards (during ordering / billing-info turn) skip the footer to\n// avoid the redundant 'opção 1, 2, 3' hint when there's only one option.\nconst inOrderingFlow = Boolean(ctx.activeOrderItem) || (data && data.items && data.items.length > 0);\nconst alreadyHasFooter = /quer pedir por aqui mesmo/i.test(reply);\nif (productsRendered >= 2 && intendedAction === 'none' && !inOrderingFlow && !alreadyHasFooter) {\n  const prev = ctx.previousBilling || null;\n  const hasSavedAddress = prev && String(prev.billing_postcode || '').trim() && String(prev.billing_address_1 || '').trim();\n  let footerLines;\n  if (hasSavedAddress) {\n    const phoneFromProfile = String(ctx.senderPhone || '').trim();\n    const labeled = [\n      ['Email', prev.billing_email],\n      ['CEP', prev.billing_postcode],\n      ['Endereço', prev.billing_address_1],\n      ['Número', prev.billing_number],\n      ['Bairro', prev.billing_neighborhood],\n      ['Cidade', prev.billing_city],\n      ['Estado (UF)', prev.billing_state],\n      ['CPF', prev.billing_cpf],\n      ['Telefone', prev.billing_phone || phoneFromProfile]\n    ].filter(p => String(p[1] || '').trim()).map(p => p[0] + ': ' + String(p[1]).trim());\n    footerLines = [\n      '',\n      '💬 *Quer pedir por aqui mesmo pelo WhatsApp?*',\n      'Me diga a *opção 1, 2, 3...* (ou o nome do produto) e eu uso seus dados cadastrados:',\n      ''\n    ].concat(labeled).concat([\n      '',\n      '_(Se quiser alterar algum dado ou entregar em outro endereço, é só me avisar.)_'\n    ]);\n  } else {\n    footerLines = [\n      '',\n      '💬 *Quer pedir por aqui mesmo pelo WhatsApp?*',\n      'Me diga a *opção 1, 2, 3...* (ou o nome do produto) e envie seus dados de cobrança no formato:',\n      '',\n      'Email: seu@email.com',\n      'CEP: 00000-000',\n      'Endereço: Rua Exemplo',\n      'Número: 123',\n      'Bairro: Centro',\n      'Cidade: São Paulo',\n      'Estado (UF): SP',\n      'CPF: 000.000.000-00'\n    ];\n  }\n  reply = reply.replace(/\\s+$/, '') + '\\n' + footerLines.join('\\n');\n}\n\n// ── Auto-fill name/phone/email from Chatwoot sender ──\nif (!String(data.billing_name||'').trim() && ctx.senderName) data.billing_name = ctx.senderName;\nif (!String(data.billing_phone||'').trim() && ctx.senderPhone) data.billing_phone = ctx.senderPhone;\nif (!String(data.billing_email||'').trim() && ctx.senderEmail) data.billing_email = ctx.senderEmail;\n\n// ── Auto-extract billing fields from prior user messages ──\n{\n  const allUserMsgs = (ctx.openAiRequest && ctx.openAiRequest.messages || [])\n    .filter(m => m.role === 'user').map(m => String(m.content || '')).join('\\n');\n  const NEXT_LABEL = '(?:\\\\s+(?:e-?mail|cpf|cep|postcode|address|endere[cç]o|rua|street|avenida|number|n[uú]mero|n[º°]|city|cidade|state|estado(?:\\\\s*\\\\(uf\\\\))?|UF|phone|telefone|tel|whatsapp|name|nome(?:\\\\s+completo)?|bairro|neighborhood)\\\\s*[:=])';\n  const extractors = [\n    ['billing_email', /(?:e-?mail)\\s*[:=]\\s*([\\w.+-]+@[\\w-]+\\.[\\w.-]+)/i],\n    ['billing_cpf', /\\b(?:cpf)\\s*[:=]?\\s*([\\d.\\-]{11,18})/i],\n    ['billing_postcode', /(?:cep|postcode|c\\.?e\\.?p\\.?)\\s*[:=]?\\s*(\\d{5}-?\\d{3})/i],\n    ['billing_address_1', new RegExp('(?:address|endere[cç]o|rua|street|avenida|av\\\\.)\\\\s*[:=]\\\\s*(.+?)(?=' + NEXT_LABEL + '|\\\\s*$)', 'i')],\n    ['billing_number', /(?:number|n[uú]mero|n[º°]\\.?)\\s*[:=]?\\s*(\\d{1,8})/i],\n    ['billing_neighborhood', new RegExp('(?:bairro|neighborhood)\\\\s*[:=]\\\\s*(.+?)(?=' + NEXT_LABEL + '|\\\\s*$)', 'i')],\n    ['billing_city', new RegExp('(?:city|cidade)\\\\s*[:=]\\\\s*(.+?)(?=' + NEXT_LABEL + '|\\\\s*$)', 'i')],\n    ['billing_state', /(?:state|estado(?:\\s*\\(uf\\))?|UF)\\s*[:=]?\\s*([A-Z]{2})\\b/i],\n    ['billing_phone', /(?:phone|telefone|tel\\.?|whatsapp)\\s*[:=]?\\s*\\+?(\\d[\\d\\s\\-()]{8,20})/i],\n    ['billing_name', new RegExp('(?:name|nome(?:\\\\s+completo)?)\\\\s*[:=]\\\\s*(.+?)(?=' + NEXT_LABEL + '|\\\\s*$)', 'i')]\n  ];\n  for (const pair of extractors) {\n    const field = pair[0]; const rx = pair[1];\n    if (String(data[field] || '').trim()) continue;\n    const m = allUserMsgs.match(rx);\n    if (m && m[1]) data[field] = m[1].trim().replace(/[.,;:]+$/, '').trim();\n  }\n}\n\n// ── Fall back to PREVIOUS_BILLING (last order) for any still-empty fields ──\n// This makes saved billing the default — customer doesn't have to retype.\n{\n  const prev = ctx.previousBilling || null;\n  if (prev) {\n    const fields = ['billing_name','billing_email','billing_phone','billing_postcode','billing_address_1','billing_number','billing_neighborhood','billing_city','billing_state','billing_cpf'];\n    for (const f of fields) {\n      if (!String(data[f] || '').trim() && String(prev[f] || '').trim()) {\n        data[f] = prev[f];\n      }\n    }\n  }\n}\n\n// ── Variation guardrail: force items to active order item ──\n// IMPORTANT: only fires when the AI's items are in the SAME product family as\n// AOI but a different variation (e.g. FamiGel 30g → FamiGel 60g). When the AI\n// switches to a DIFFERENT product family (FamiGel → FamiSitol), trust the AI.\nconst aoi = ctx.activeOrderItem || null;\nif (aoi) {\n  const aoiVid = Number(aoi.variation_id || 0);\n  const aoiPid = Number(aoi.product_id || 0);\n  if (Array.isArray(data.items) && data.items.length > 0) {\n    const mismatched = data.items.some(it => {\n      const vid = Number(it.variation_id || 0);\n      const pid = Number(it.product_id || 0);\n      // Same family, different variation → force AOI variation.\n      if (aoiPid && pid && aoiPid === pid && aoiVid && vid && aoiVid !== vid) return true;\n      return false;\n    });\n    if (mismatched) {\n      const qty = Math.max(1, Number(data.items[0].quantity || 1));\n      data.items = [{ product_id: aoiPid || undefined, variation_id: aoiVid || undefined, quantity: qty }];\n    }\n  } else if (intendedAction === 'calculate_shipping' || intendedAction === 'create_order') {\n    // AI took an order action but forgot items — inject AOI as fallback\n    data.items = [{ product_id: aoiPid || undefined, variation_id: aoiVid || undefined, quantity: 1 }];\n  }\n}\n\n// ── Hard guardrails for action ──\nconst requiredBilling = ['billing_email','billing_postcode','billing_address_1','billing_number','billing_neighborhood','billing_city','billing_state','billing_name','billing_cpf','billing_phone'];\nconst hasItems = Array.isArray(data.items) && data.items.length > 0 && data.items.every(i => i.product_id || i.variation_id);\nconst missingFields = requiredBilling.filter(f => !String(data[f]||'').trim());\nconst hasAllBilling = missingFields.length === 0;\n\nconst itemsWithStock = (data.items || []).map(i => {\n  const cat = (ctx.catalog || []).find(p =>\n    (i.variation_id && Number(p.variation_id) === Number(i.variation_id)) ||\n    (i.product_id && Number(p.product_id) === Number(i.product_id))\n  );\n  return { item: i, row: cat, oos: cat && cat.stock_status === 'outofstock' };\n});\nconst oosItems = itemsWithStock.filter(x => x.oos);\nconst hasOos = oosItems.length > 0;\n\nlet resolvedAction = 'none';\nif (intendedAction === 'calculate_shipping' && hasItems && hasAllBilling && !hasOos) resolvedAction = 'calculate_shipping';\nelse if (intendedAction === 'create_order' && hasItems && hasAllBilling && !hasOos) resolvedAction = 'create_order';\n\n// ── Force fresh preview if billing changed since last preview ──\n// When the customer changes CEP/address/etc AFTER seeing a preview, we MUST\n// recalculate shipping and show a new preview before allowing create_order —\n// otherwise total/shipping cost shown to customer is stale.\nif (resolvedAction === 'create_order') {\n  const prevAssistMsgs = ((ctx.openAiRequest && ctx.openAiRequest.messages) || [])\n    .filter(m => m.role === 'assistant').map(m => String(m.content || ''));\n  let lastPreview = '';\n  for (let i = prevAssistMsgs.length - 1; i >= 0; i--) {\n    const m = prevAssistMsgs[i];\n    if (/Itens[\\s\\S]{0,30}Entrega[\\s\\S]{0,30}Frete[\\s\\S]{0,30}Resumo/i.test(m)\n        || /resumo do seu pedido/i.test(m)) {\n      lastPreview = m; break;\n    }\n  }\n  if (lastPreview) {\n    const extract = (rx, src) => { const mm = src.match(rx); return mm ? mm[1].trim() : ''; };\n    const normCEP = s => String(s || '').replace(/\\D/g, '');\n    const normTxt = s => String(s || '').trim().toLowerCase();\n    const prev = {\n      cep: normCEP(extract(/CEP[:\\s]+([\\d-]{8,10})/i, lastPreview)),\n      addr1: normTxt(extract(/Endere[cç]o:\\s*([^\\n]+)/i, lastPreview)\n          || extract(/^([A-Z][^,\\n]+?),\\s*n[º°]\\s*\\d/im, lastPreview)),\n      number: normTxt(extract(/N[uú]mero:\\s*([^\\n]+)/i, lastPreview)\n          || extract(/n[º°]\\s*([\\w-]+)/i, lastPreview)),\n      neighborhood: normTxt(extract(/Bairro:\\s*([^\\n]+)/i, lastPreview)),\n      city: normTxt(extract(/Cidade:\\s*([^\\n]+)/i, lastPreview)\n          || extract(/,\\s*([A-Z][^/]+)\\/[A-Z]{2}/i, lastPreview)),\n      state: normTxt(extract(/Estado[^:]*:\\s*([A-Z]{2})/i, lastPreview)\n          || extract(/\\/([A-Z]{2}),?/i, lastPreview))\n    };\n    const cur = {\n      cep: normCEP(data.billing_postcode),\n      addr1: normTxt(data.billing_address_1),\n      number: normTxt(data.billing_number),\n      neighborhood: normTxt(data.billing_neighborhood),\n      city: normTxt(data.billing_city),\n      state: normTxt(data.billing_state)\n    };\n    const fieldsToCheck = ['cep','addr1','number','neighborhood','city','state'];\n    let changed = false;\n    for (const f of fieldsToCheck) {\n      if (prev[f] && cur[f] && prev[f] !== cur[f]) { changed = true; break; }\n    }\n    if (changed) {\n      // Force a fresh preview before allowing order creation\n      resolvedAction = 'calculate_shipping';\n      reply = '';\n    }\n  }\n}\n\n// ── Auto-advance to calculate_shipping ──\n// Triggers when customer has clear order intent (or confirmed using saved\n// address) AND billing is complete AND we have items (AI-picked or AOI fallback).\n// Skips the redundant 'Posso confirmar o endereço?' turn so the customer goes\n// directly from \"want to order X\" → full preview with shipping.\n{\n  const lastUser = ((ctx.openAiRequest && ctx.openAiRequest.messages || [])\n    .filter(m => m.role === 'user').slice(-1)[0] || { content: '' }).content.toLowerCase().trim();\n  const REUSE = /\\b(same|mesm[oa]s?|previous|anterior(?:es)?|use (?:the )?same|usar (?:os )?mesmos?|same data|same address|os mesmos dados|dados anteriores)\\b/i;\n  const SHORT = /^(sim|yes|ok|okay|confirmo|prossiga|pode|continue|proceed)[!.\\s]*$/i;\n  const ORDER_INTENT = /\\b(want to (?:order|buy|get)|i (?:want|need|would like)|need to (?:order|change|switch)|change (?:to|product to)|switch to|prefiro|preciso de|preciso (?:pedir|trocar|mudar|de)|quero (?:pedir|comprar|encomendar|mudar|trocar)|gostaria de (?:pedir|comprar)|fazer (?:o )?pedido|finalizar (?:o )?pedido|encomendar|pedir esse|fechar (?:o )?pedido|order this|buy this|order \\w+|me d[eê] |send me)\\b/i;\n  const isConfirm = REUSE.test(lastUser) || SHORT.test(lastUser);\n  const isFreshIntent = ORDER_INTENT.test(lastUser);\n  if (resolvedAction === 'none' && intendedAction === 'none' && (isConfirm || isFreshIntent) && hasAllBilling) {\n    let canAdvance = false;\n    // Prefer AI-picked items (they reflect the latest user request)\n    if (Array.isArray(data.items) && data.items.length > 0 && data.items.some(i => i.product_id || i.variation_id)) {\n      canAdvance = true;\n    } else if (aoi && aoi.stock_status === 'instock') {\n      data.items = [{ product_id: aoi.product_id, variation_id: aoi.variation_id, quantity: 1 }];\n      canAdvance = true;\n    }\n    if (canAdvance) {\n      resolvedAction = 'calculate_shipping';\n      reply = '';\n    }\n  }\n}\n\n// ── If AI tried to act but we blocked it, override reply with concrete asks ──\nconst wasBlocked = (intendedAction === 'calculate_shipping' || intendedAction === 'create_order') && resolvedAction === 'none';\nif (wasBlocked) {\n  if (hasOos) {\n    const oosTitles = oosItems.map(x => (x.row && x.row.title) || ('Produto #' + (x.item.variation_id || x.item.product_id))).filter(Boolean);\n    const list = oosTitles.length === 1 ? ('*' + oosTitles[0] + '*') : oosTitles.map(t => '*' + t + '*').join(', ');\n    reply = 'Infelizmente o produto ' + list + ' está esgotado no momento e não consigo gerar o pedido. Posso te mostrar outras opções similares disponíveis em estoque?';\n  } else {\n    const fieldLabel = {\n      billing_email: 'e-mail', billing_postcode: 'CEP', billing_address_1: 'endereço (rua)',\n      billing_number: 'número', billing_neighborhood: 'bairro', billing_city: 'cidade',\n      billing_state: 'estado (UF)', billing_name: 'nome completo', billing_cpf: 'CPF', billing_phone: 'telefone com DDD'\n    };\n    const asks = missingFields.map(f => fieldLabel[f]).filter(Boolean);\n    if (asks.length > 0) {\n      if (asks.length === 1) reply = 'Para finalizar seu pedido, ainda preciso do seu *' + asks[0] + '*. Pode me informar?';\n      else { const last = asks.pop(); reply = 'Para finalizar seu pedido, ainda preciso de: ' + asks.join(', ') + ' e *' + last + '*. Pode me informar?'; }\n    } else if (!hasItems) reply = 'Por favor, me confirme qual produto e quantidade você quer pedir.';\n  }\n}\n\n// ── FINAL GUARD: never send an empty message — Chatwoot would reject it ──\nif (!reply || !reply.trim()) {\n  reply = 'Hmm, não consegui processar agora. Pode reformular sua pergunta? 🙂';\n}\n// Strip any literal {PRODUCTS} that the AI left when it didn't actually pass IDs\nif (reply.indexOf('{PRODUCTS}') !== -1) {\n  reply = reply.split('{PRODUCTS}').join('').replace(/\\n{3,}/g, '\\n\\n').trim();\n  if (!reply) reply = 'Hmm, não consegui localizar esse produto. Pode me dizer o nome de outra forma? 🙂';\n}\n\nreturn {\n  accountId: ctx.accountId,\n  conversationId: ctx.conversationId,\n  chatwootBaseUrl: ctx.chatwootBaseUrl,\n  wooBaseUrl: ctx.wooBaseUrl,\n  shippingApiUrl: ctx.shippingApiUrl,\n  defaultItemWeightKg: ctx.defaultItemWeightKg,\n  catalog: ctx.catalog,\n  senderName: ctx.senderName,\n  senderEmail: ctx.senderEmail,\n  senderPhone: ctx.senderPhone,\n  reply,\n  action: resolvedAction,\n  orderData: data\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ],
+      "id": "1bec5cfb-64d8-48e3-a262-1725892201de",
+      "name": "Parse AI Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-ship",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "calculate_shipping",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -360,
+        0
+      ],
+      "id": "8f2694a3-efbd-4c32-b8fb-3d31af2102d1",
+      "name": "Need Shipping Calc?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst items = (data.orderData.items || []).filter(i => i.product_id || i.variation_id);\nconst firstItem = items[0] || null;\nconst cep = String(data.orderData.billing_postcode || '').replace(/\\D/g, '');\nconst productId = String((firstItem && firstItem.product_id) || '').trim();\nconst variationId = String((firstItem && firstItem.variation_id) || '').trim();\nconst qty = Math.max(1, Number((firstItem && firstItem.quantity) || 1));\nconst params = [];\nif (cep) params.push('cep=' + encodeURIComponent(cep));\nif (qty) params.push('qty=' + encodeURIComponent(String(qty)));\nif (productId) params.push('product_id=' + encodeURIComponent(productId));\nif (variationId) params.push('variation_id=' + encodeURIComponent(variationId));\nconst ready = Boolean(cep.length === 8 && (productId || variationId));\nconst url = ready ? data.shippingApiUrl + '?' + params.join('&') : '';\nreturn { ...data, shippingQuoteUrl: url, shippingQuoteReady: ready };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        220
+      ],
+      "id": "237086a6-1bbb-4305-976c-c64e90905567",
+      "name": "Build Shipping Request"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.shippingQuoteUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        220
+      ],
+      "id": "338f2fc2-bb7b-44f8-92ba-e991695f79dd",
+      "name": "Get Shipping Quote"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Parse AI Response').first().json;\nconst shippingResp = $input.first().json || {};\nconst parseBody = v => {\n  if (v && typeof v === 'object') return v;\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return {}; } }\n  return {};\n};\nconst respBody = parseBody(shippingResp.body || shippingResp);\nconst parseMoney = v => {\n  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;\n  const s = String(v || '').replace(/[^0-9,.\\-]/g, '').trim();\n  if (!s) return 0;\n  const norm = s.includes(',') && s.includes('.') ? s.replace(/\\./g,'').replace(',', '.') : s.replace(',', '.');\n  const n = Number.parseFloat(norm);\n  return Number.isFinite(n) ? n : 0;\n};\nconst firstText = function() {\n  for (let i = 0; i < arguments.length; i++) {\n    const x = arguments[i];\n    if (x === null || x === undefined) continue;\n    if (typeof x === 'string' && x.trim()) return x.trim();\n    if (typeof x === 'number') return String(x);\n  }\n  return '';\n};\nconst methodTitle = m => {\n  const s = (m && typeof m.settings === 'object') ? m.settings : {};\n  const isn = (m && typeof m.instance_settings === 'object') ? m.instance_settings : {};\n  return firstText((m && m.custom_title), s.custom_title, isn.custom_title, (m && m.method_title), s.title, isn.title, (m && m.title), (m && m.label), (m && m.name));\n};\nconst methodLabel = m => {\n  const title = methodTitle(m);\n  const id = String((m && (m.id || m.method_id)) || '').trim();\n  if (title && id && id.toLowerCase() !== title.toLowerCase()) return title + ' (' + id + ')';\n  return title || id || 'Frete';\n};\nconst methodPrice = m => parseMoney(firstText((m && m.total), (m && m.cost), (m && m.price), (m && m.rate), (m && m.value)));\nconst methodDays = m => firstText((m && m.days), (m && m.delivery_days), (m && m.delivery_time), (m && m.deadline), (m && m.estimate), (m && m.eta));\n\nconst methodsDebug = Array.isArray(respBody.methods_debug) ? respBody.methods_debug : [];\nconst chosenRateId = String((Array.isArray(respBody.chosen_methods) ? respBody.chosen_methods[0] : '') || '').trim();\nconst cmParts = chosenRateId.split(':');\nconst chosenMethodId = cmParts[0];\nconst chosenInstanceId = cmParts[1];\nlet chosen = null;\nif (chosenRateId && methodsDebug.length > 0) {\n  chosen = methodsDebug.find(m => String(m.id || '').trim() === chosenMethodId && (!chosenInstanceId || String(m.instance_id || '').trim() === chosenInstanceId)) || methodsDebug.find(m => String(m.id || '').trim() === chosenMethodId) || null;\n}\nconst topLevelRaw = firstText(respBody.shipping_total, respBody.shippingTotal, respBody.total_shipping, (respBody.totals && respBody.totals.shipping_total), (respBody.totals && respBody.totals.shipping), (respBody.selected_rate && respBody.selected_rate.total), (respBody.selected_rate && respBody.selected_rate.cost), (respBody.chosen_rate && respBody.chosen_rate.total), (respBody.chosen_rate && respBody.chosen_rate.cost));\nconst topLevelPrice = parseMoney(topLevelRaw);\nconst topLevelHas = topLevelRaw !== '' && topLevelRaw !== null && topLevelRaw !== undefined;\nif (!chosen && topLevelHas) {\n  chosen = {\n    id: firstText((respBody.selected_rate && respBody.selected_rate.method_id), (respBody.chosen_rate && respBody.chosen_rate.method_id), chosenMethodId, ''),\n    custom_title: methodTitle(respBody.selected_rate) || methodTitle(respBody.chosen_rate),\n    total: topLevelPrice\n  };\n}\nif (!chosen && methodsDebug.length > 0) {\n  const cands = methodsDebug.map(m => ({ m, p: methodPrice(m), has: m && (m.total != null || m.cost != null || m.price != null || m.rate != null) })).filter(x => x.has);\n  chosen = cands.sort((a,b) => a.p - b.p)[0] && cands.sort((a,b) => a.p - b.p)[0].m;\n}\nconst directPrice = methodPrice(chosen);\nconst directHas = chosen && (chosen.total != null || chosen.cost != null || chosen.price != null || chosen.rate != null);\nconst resolvedPrice = directHas ? directPrice : topLevelPrice;\nconst haveResult = chosen && (directHas || topLevelHas);\nconst options = haveResult ? [{ name: methodLabel(chosen), price: resolvedPrice, days: methodDays(chosen), is_free: resolvedPrice === 0 }] : [];\n\nconst data = parsed.orderData;\nconst items = data.items || [];\nconst catalog = parsed.catalog || [];\nconst fmt = n => 'R$ ' + Number(n).toFixed(2).replace('.', ',');\n\nconst lineRows = items.map(i => {\n  const match = catalog.find(p => {\n    if (i.variation_id) return Number(p.variation_id) === Number(i.variation_id);\n    if (i.product_id) return Number(p.product_id) === Number(i.product_id);\n    return false;\n  });\n  const refId = i.variation_id || i.product_id;\n  const title = (match && match.title) || ('Produto #' + refId);\n  const price = Number(String((match && match.price) || 0).replace(/[^0-9.,-]/g,'').replace(',', '.')) || 0;\n  const qty = Math.max(1, Number(i.quantity || 1));\n  return { title, qty, price, lineTotal: price * qty };\n});\nconst subtotal = lineRows.reduce((s, r) => s + r.lineTotal, 0);\nconst itemsBlock = lineRows.map(r => '• ' + r.title + ' — ' + r.qty + 'x — ' + fmt(r.lineTotal)).join('\\n');\n\nconst addressBlock = [\n  ['Email', data.billing_email],\n  ['CEP', data.billing_postcode],\n  ['Endereço', data.billing_address_1],\n  ['Número', data.billing_number],\n  ['Bairro', data.billing_neighborhood],\n  ['Cidade', data.billing_city],\n  ['Estado (UF)', data.billing_state],\n  ['CPF', data.billing_cpf],\n  ['Telefone', data.billing_phone]\n].filter(p => String(p[1] || '').trim()).map(p => p[0] + ': ' + String(p[1]).trim()).join('\\n');\n\nconst shippingLine = options.length > 0\n  ? 'Frete: ' + options[0].name + ' - ' + (options[0].is_free ? 'GRÁTIS' : fmt(options[0].price)) + (options[0].days ? ' (' + options[0].days + ' dias úteis)' : '')\n  : 'Frete: a calcular — confirme e enviaremos o valor antes do pagamento';\nconst shippingPrice = options.length > 0 ? options[0].price : 0;\nconst totalLine = options.length > 0 ? 'Total: ' + fmt(subtotal + shippingPrice) : '';\n\nconst previewBody = [\n  '📦 *Itens*', itemsBlock, '',\n  '📍 *Entrega*', addressBlock, '',\n  '🚚 *Frete*', shippingLine, '',\n  '💰 *Resumo*', 'Subtotal: ' + fmt(subtotal), totalLine\n].filter(Boolean).join('\\n');\n\nconst firstName = String(data.billing_name || parsed.senderName || '').trim().split(/\\s+/)[0] || '';\nconst greeting = firstName ? ('Perfeito, ' + firstName + '!') : 'Perfeito!';\nconst closing = options.length > 0\n  ? 'Posso confirmar e gerar o link de pagamento? Responda *sim* para prosseguir.'\n  : 'Posso prosseguir? Responda *sim* para gerar o link de pagamento.';\n\nconst reply = [greeting + ' Aqui está o resumo do seu pedido:', '', previewBody, '', closing].join('\\n');\n\nreturn {\n  accountId: parsed.accountId,\n  conversationId: parsed.conversationId,\n  chatwootBaseUrl: parsed.chatwootBaseUrl,\n  reply,\n  chosenShipping: options.length > 0 ? {\n    method_id: String((chosen && chosen.id) || chosenMethodId || 'flat_rate'),\n    method_label: options[0].name,\n    cost: options[0].price\n  } : null\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        220
+      ],
+      "id": "6578133d-4a30-4995-88c3-811a74caac62",
+      "name": "Fill Preview"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-create",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "create_order",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -100,
+        0
+      ],
+      "id": "5501163d-ea92-400d-821c-680d28223d8c",
+      "name": "Create Order?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst items = (data.orderData.items || []).filter(i => i.product_id || i.variation_id);\nconst firstItem = items[0] || null;\nconst cep = String(data.orderData.billing_postcode || '').replace(/\\D/g, '');\nconst productId = String((firstItem && firstItem.product_id) || '').trim();\nconst variationId = String((firstItem && firstItem.variation_id) || '').trim();\nconst qty = Math.max(1, Number((firstItem && firstItem.quantity) || 1));\nconst params = [];\nif (cep) params.push('cep=' + encodeURIComponent(cep));\nif (qty) params.push('qty=' + encodeURIComponent(String(qty)));\nif (productId) params.push('product_id=' + encodeURIComponent(productId));\nif (variationId) params.push('variation_id=' + encodeURIComponent(variationId));\nconst ready = Boolean(cep.length === 8 && (productId || variationId));\nconst url = ready ? data.shippingApiUrl + '?' + params.join('&') : '';\nreturn { ...data, orderShippingQuoteUrl: url, orderShippingQuoteReady: ready };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        -220
+      ],
+      "id": "ca96e9f1-2a50-411a-8e4f-b705a512de45",
+      "name": "Build Order Shipping Request"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.orderShippingQuoteUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        -220
+      ],
+      "id": "b3bad54f-a7fc-4680-a993-0ff41304d368",
+      "name": "Get Order Shipping Quote"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Parse AI Response').first().json;\nconst shippingResp = $input.first().json || {};\nconst parseBody = v => {\n  if (v && typeof v === 'object') return v;\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) { return {}; } }\n  return {};\n};\nconst respBody = parseBody(shippingResp.body || shippingResp);\nconst parseMoney = v => {\n  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;\n  const s = String(v || '').replace(/[^0-9,.\\-]/g, '').trim();\n  if (!s) return 0;\n  const norm = s.includes(',') && s.includes('.') ? s.replace(/\\./g,'').replace(',', '.') : s.replace(',', '.');\n  const n = Number.parseFloat(norm);\n  return Number.isFinite(n) ? n : 0;\n};\nconst firstText = function() {\n  for (let i = 0; i < arguments.length; i++) {\n    const x = arguments[i];\n    if (x === null || x === undefined) continue;\n    if (typeof x === 'string' && x.trim()) return x.trim();\n    if (typeof x === 'number') return String(x);\n  }\n  return '';\n};\nconst methodTitle = m => {\n  const s = (m && typeof m.settings === 'object') ? m.settings : {};\n  const isn = (m && typeof m.instance_settings === 'object') ? m.instance_settings : {};\n  return firstText((m && m.custom_title), s.custom_title, isn.custom_title, (m && m.method_title), s.title, isn.title, (m && m.title), (m && m.label), (m && m.name));\n};\nconst methodPrice = m => parseMoney(firstText((m && m.total), (m && m.cost), (m && m.price), (m && m.rate), (m && m.value)));\nconst methodsDebug = Array.isArray(respBody.methods_debug) ? respBody.methods_debug : [];\nconst chosenRateId = String((Array.isArray(respBody.chosen_methods) ? respBody.chosen_methods[0] : '') || '').trim();\nconst cmParts = chosenRateId.split(':');\nconst chosenMethodId = cmParts[0];\nconst chosenInstanceId = cmParts[1];\nlet chosen = null;\nif (chosenRateId && methodsDebug.length > 0) {\n  chosen = methodsDebug.find(m => String(m.id || '').trim() === chosenMethodId && (!chosenInstanceId || String(m.instance_id || '').trim() === chosenInstanceId)) || methodsDebug.find(m => String(m.id || '').trim() === chosenMethodId) || null;\n}\nconst topLevelPrice = parseMoney(firstText(respBody.shipping_total, respBody.shippingTotal, respBody.total_shipping, (respBody.totals && respBody.totals.shipping_total), (respBody.totals && respBody.totals.shipping), (respBody.selected_rate && respBody.selected_rate.total), (respBody.selected_rate && respBody.selected_rate.cost), (respBody.chosen_rate && respBody.chosen_rate.total), (respBody.chosen_rate && respBody.chosen_rate.cost)));\nif (!chosen && topLevelPrice > 0) {\n  chosen = { id: firstText((respBody.selected_rate && respBody.selected_rate.method_id), (respBody.chosen_rate && respBody.chosen_rate.method_id), chosenMethodId, ''), custom_title: methodTitle(respBody.selected_rate) || methodTitle(respBody.chosen_rate), total: topLevelPrice };\n}\nif (!chosen && methodsDebug.length > 0) {\n  const sortedM = methodsDebug.map(m => ({ m, p: methodPrice(m) })).filter(x => x.p > 0).sort((a,b) => a.p - b.p);\n  chosen = sortedM[0] && sortedM[0].m;\n}\nconst directPrice = methodPrice(chosen);\nconst cost = directPrice > 0 ? directPrice : topLevelPrice;\nconst resolvedMethodId = String((chosen && chosen.id) || chosenMethodId || 'flat_rate').trim();\nconst resolvedMethodTitle = methodTitle(chosen) || resolvedMethodId;\nreturn {\n  ...parsed,\n  resolvedShipping: {\n    method_id: resolvedMethodId,\n    method_title: resolvedMethodTitle,\n    cost: Number(cost.toFixed(2)),\n    label: resolvedMethodTitle + (resolvedMethodId && resolvedMethodId !== resolvedMethodTitle ? ' (' + resolvedMethodId + ')' : '')\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        -220
+      ],
+      "id": "60283b94-9e4c-41e9-8061-7531b171d314",
+      "name": "Resolve Order Shipping"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Parse AI Response').first().json;\nconst resolved = $('Resolve Order Shipping').first().json;\n// All orders go through as GUEST (customer_id: 0) — never auto-link to existing accounts.\nconst d = parsed.orderData;\nconst ship = resolved.resolvedShipping || {};\nconst lineItems = (d.items || []).map(i => {\n  const productId = Number(i.product_id || 0);\n  const variationId = Number(i.variation_id || 0);\n  const li = { quantity: Math.max(1, Number(i.quantity || 1)) };\n  if (productId) li.product_id = productId;\n  if (variationId) li.variation_id = variationId;\n  return li;\n}).filter(li => li.product_id || li.variation_id);\nconst nameParts = String(d.billing_name || '').trim().split(/\\s+/);\nconst billing = {\n  first_name: nameParts[0] || '',\n  last_name: nameParts.slice(1).join(' ') || '',\n  email: d.billing_email || '',\n  phone: d.billing_phone || '',\n  address_1: d.billing_address_1 || '',\n  number: d.billing_number || '',\n  neighborhood: d.billing_neighborhood || '',\n  city: d.billing_city || '',\n  state: d.billing_state || '',\n  postcode: d.billing_postcode || '',\n  country: 'BR',\n  cpf: d.billing_cpf || ''\n};\nconst shippingLines = (ship.method_id && Number(ship.cost) >= 0)\n  ? [{ method_id: String(ship.method_id), method_title: String(ship.method_title || ship.method_id), total: Number(ship.cost).toFixed(2) }]\n  : [];\nreturn {\n  ...parsed,\n  payload: {\n    payment_method: 'pagarme-pix',\n    payment_method_title: 'PIX',\n    set_paid: false,\n    status: 'pending',\n    customer_id: 0,\n    billing,\n    shipping: { ...billing },\n    line_items: lineItems,\n    shipping_lines: shippingLines,\n    meta_data: [\n      { key: '_billing_cpf', value: billing.cpf },\n      { key: '_billing_number', value: billing.number },\n      { key: '_billing_neighborhood', value: billing.neighborhood },\n      { key: '_created_via_chatwoot_bot', value: 'fresh-v1' }\n    ]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        -220
+      ],
+      "id": "1f50a534-b542-4e36-93ce-77ffb7a54596",
+      "name": "Build Order Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Parse AI Response').first().json.wooBaseUrl + '/wp-json/wc/v3/orders/' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        -220
+      ],
+      "id": "340e3d7c-1e17-4875-9ea1-fa1df1586881",
+      "name": "Woo Create Order",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Z9VqzrucTtbl9lZu",
+          "name": "FV store connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Parse AI Response').first().json;\nconst resp = $input.first().json || {};\nconst created = resp.body || resp;\nlet reply = parsed.reply || 'Pedido recebido!';\nif (created && created.id) {\n  const payUrl = created.payment_url || (created._links && created._links.payment && created._links.payment[0] && created._links.payment[0].href) || '';\n  reply += '\\n\\n✅ Pedido *#' + created.id + '* criado com sucesso!';\n  if (payUrl) reply += '\\n\\n💳 Para finalizar o pagamento, clique aqui:\\n' + payUrl;\n  else reply += '\\n\\nVocê receberá o link de pagamento em instantes.';\n\n  // ── Save billing to workflow memory, keyed by phone (fallback: email) ──\n  // Next conversation with this contact will see previousBilling automatically.\n  try {\n    const od = parsed.orderData || {};\n    const phoneDigits = String(parsed.senderPhone || '').replace(/\\D/g, '').slice(-10);\n    const email = String(parsed.senderEmail || '').trim().toLowerCase();\n    const memoryKey = (phoneDigits && phoneDigits.length >= 8)\n      ? ('p:' + phoneDigits)\n      : (email ? ('e:' + email) : '');\n    if (memoryKey) {\n      const sd = $getWorkflowStaticData('global');\n      if (!sd.billingMemory) sd.billingMemory = {};\n      sd.billingMemory[memoryKey] = {\n        billing_name: od.billing_name || '',\n        billing_email: od.billing_email || '',\n        billing_phone: od.billing_phone || '',\n        billing_cpf: od.billing_cpf || '',\n        billing_postcode: od.billing_postcode || '',\n        billing_address_1: od.billing_address_1 || '',\n        billing_number: od.billing_number || '',\n        billing_neighborhood: od.billing_neighborhood || '',\n        billing_city: od.billing_city || '',\n        billing_state: od.billing_state || '',\n        saved_at: new Date().toISOString(),\n        last_order_id: created.id\n      };\n    }\n  } catch (e) { /* memory write failed — non-fatal */ }\n} else {\n  const errMsg = (created && (created.message || created.code)) || '';\n  reply += '\\n\\n⚠️ Tive um problema ao gerar o pedido' + (errMsg ? ' (' + errMsg + ')' : '') + '. Um atendente irá ajudar você em instantes.';\n}\nreturn {\n  accountId: parsed.accountId,\n  conversationId: parsed.conversationId,\n  chatwootBaseUrl: parsed.chatwootBaseUrl,\n  reply\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        -220
+      ],
+      "id": "570628bb-dc65-4883-9a93-dc200a5473c9",
+      "name": "Build Order Confirmation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json;\nlet reply = String(p.reply || '').trim();\nif (!reply) reply = 'Olá! Como posso ajudar?';\nreturn {\n  accountId: p.accountId,\n  conversationId: p.conversationId,\n  chatwootBaseUrl: p.chatwootBaseUrl,\n  reply\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        440
+      ],
+      "id": "667d3087-31d6-4faf-8b98-aed3f33557a9",
+      "name": "Plain Reply Pass-through"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwootBaseUrl }}/api/v1/accounts/{{ $json.accountId }}/conversations/{{ $json.conversationId }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.reply, message_type: 'outgoing', private: false, content_type: 'text' } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        220
+      ],
+      "id": "c7696e6a-d6c5-4c79-bf76-5428d08f86b0",
+      "name": "Send Reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SbmBMJv7nxEADt7f",
+          "name": "chatwoot token"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Should Process?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Process?": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation": {
+      "main": [
+        [
+          {
+            "node": "Get Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Catalog": {
+      "main": [
+        [
+          {
+            "node": "Maybe Lookup Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Maybe Lookup Order": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Need Shipping Calc?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need Shipping Calc?": {
+      "main": [
+        [
+          {
+            "node": "Build Shipping Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Shipping Request": {
+      "main": [
+        [
+          {
+            "node": "Get Shipping Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Shipping Quote": {
+      "main": [
+        [
+          {
+            "node": "Fill Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fill Preview": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Order?": {
+      "main": [
+        [
+          {
+            "node": "Build Order Shipping Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plain Reply Pass-through",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Order Shipping Request": {
+      "main": [
+        [
+          {
+            "node": "Get Order Shipping Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order Shipping Quote": {
+      "main": [
+        [
+          {
+            "node": "Resolve Order Shipping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Order Shipping": {
+      "main": [
+        [
+          {
+            "node": "Build Order Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Order Payload": {
+      "main": [
+        [
+          {
+            "node": "Woo Create Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Woo Create Order": {
+      "main": [
+        [
+          {
+            "node": "Build Order Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Order Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plain Reply Pass-through": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6c90848b-ec18-4364-b7b6-4164d82fa7a4",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "fb2d8fbc394b4b97",
+  "tags": []
+}
